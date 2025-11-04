@@ -47,21 +47,26 @@ jobs:
     - name: Show tunnel address
       shell: pwsh
       run: |
-        # wait until playit has registered the tunnel
-        Start-Sleep 10
-        # ask playit-cli for the current mappings
-        $map = & "$env:USERPROFILE\playit.exe" info --json | ConvertFrom-Json
-        $rdpLine = $map.tunnels | Where-Object { $_.local_port -eq 3389 }
-        if ($rdpLine) {
-          $hostPort = "$($rdpLine.host):$($rdpLine.port)"
-          Write-Host ">>> RDP ADDRESS: $hostPort <<<"
-          # optional: send to Telegram
-          # Invoke-RestMethod -Uri "https://api.telegram.org/bot${{ secrets.TG_BOT }}/sendMessage" `
-          #   -Method Post -Body @{chat_id="${{ secrets.TG_ID }}"; text="RDP ready: $hostPort"} -UseBasicParsing
-        } else {
-          Write-Host "playit tunnel on port 3389 not found"
+        # legacy agent: read the JSON file it drops in %APPDATA%
+        $tunFile = "$env:APPDATA\playit\tunnel_info.json"
+        for ($i=0; $i -lt 30; $i++) {          # max 30 s
+          if (Test-Path $tunFile) { break }
+          Start-Sleep 1
+        }
+        if (-not (Test-Path $tunFile)) {
+          Write-Host "tunnel_info.json not found after 30 s"
           exit 1
         }
+        $info = Get-Content $tunFile | ConvertFrom-Json
+        # pick the mapping whose local port is 3389
+        $rdp = $info.tunnels | Where-Object { $_.local_port -eq 3389 }
+        if (-not $rdp) {
+          Write-Host "No tunnel on port 3389"
+          exit 1
+        }
+        $addr = "$($rdp.host):$($rdp.port)"
+        Write-Host ">>> RDP ADDRESS: $addr <<<"
+
         
     # ---------- chaining logic ----------
     - name: Queue follow-up job (only once)
