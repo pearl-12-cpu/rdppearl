@@ -47,27 +47,23 @@ jobs:
     - name: Show tunnel address
       shell: pwsh
       run: |
-        # legacy agent: read the JSON file it drops in %APPDATA%
-        $tunFile = "$env:APPDATA\playit\tunnel_info.json"
-        for ($i=0; $i -lt 30; $i++) {          # max 30 s
-          if (Test-Path $tunFile) { break }
+        # start playit in the foreground and capture its stdout
+        $p = Start-Process "$env:USERPROFILE\playit.exe" -Arg "--secret",$env:PLAYIT_AUTH_KEY -NoNewWindow -PassThru -RedirectStandardOutput "$env:TEMP\playit.log"
+        # wait until the tunnel line appears
+        for ($i=0; $i -lt 60; $i++) {
           Start-Sleep 1
+          if (Test-Path "$env:TEMP\playit.log") {
+            $line = Select-String -Path "$env:TEMP\playit.log" -Pattern "https://(.+\.ply\.gg:\d+)" -Quiet
+            if ($line) {
+              $addr = $matches[1]
+              Write-Host ">>> RDP ADDRESS: $addr <<<"
+              exit 0
+            }
+          }
         }
-        if (-not (Test-Path $tunFile)) {
-          Write-Host "tunnel_info.json not found after 30 s"
-          exit 1
-        }
-        $info = Get-Content $tunFile | ConvertFrom-Json
-        # pick the mapping whose local port is 3389
-        $rdp = $info.tunnels | Where-Object { $_.local_port -eq 3389 }
-        if (-not $rdp) {
-          Write-Host "No tunnel on port 3389"
-          exit 1
-        }
-        $addr = "$($rdp.host):$($rdp.port)"
-        Write-Host ">>> RDP ADDRESS: $addr <<<"
+        Write-Host "tunnel address not detected after 60 s"
+        exit 1
 
-        
     # ---------- chaining logic ----------
     - name: Queue follow-up job (only once)
       if: github.event.inputs.chain != 'true'
