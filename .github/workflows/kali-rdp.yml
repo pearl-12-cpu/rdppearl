@@ -18,26 +18,38 @@ jobs:
 
       - name: Install Kali tools + desktop + xrdp + playit
         run: |
-          # 1. add **both** Kali GPG keys (fixes the signature error)
-          sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys ED444FF07D8D0BF6
-          sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys ED65462EC8D5E4C5
+          # 1.  add Kali repo + both keys
+          sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys ED444FF07D8D0BF6 ED65462EC8D5E4C5
           echo "deb http://http.kali.org/kali kali-rolling main non-free contrib" | sudo tee /etc/apt/sources.list.d/kali.list
+
+          # 2.  PIN: block Kali base-system packages
+          sudo tee /etc/apt/preferences.d/kali-pin <<'EOF'
+          Package: *
+          Pin: release o=Kali
+          Pin-Priority: 100
+
+          Package: kali-* metasploit* nmap burpsuite* john* hashcat* gobuster* dirb* sqlmap*
+          Pin: release o=Kali
+          Pin-Priority: 500
+          EOF
+
           sudo apt-get update
 
-          # 2. Kali meta-package + xfce + xrdp
-          sudo apt-get install -y kali-linux-headless kali-desktop-xfce xrdp
+          # 3.  install ONLY Kali tools (no base-files)
+          sudo apt-get install -y kali-linux-headless kali-desktop-xfce \
+                                  metasploit-framework nmap burpsuite john hashcat gobuster dirb sqlmap
 
-          # 3. local user & password
+          # 4.  create local user
           sudo useradd -m -s /bin/bash kali 2>/dev/null || true
           echo "kali:${{ secrets.KL_PASS }}" | sudo chpasswd
           sudo usermod -aG sudo kali
 
-          # 4. xrdp tweaks (xfce session)
+          # 5.  xrdp tweaks (xfce session)
           echo "startxfce4" | sudo tee -a /etc/xrdp/startwm.sh
           sudo systemctl enable xrdp
           sudo systemctl start xrdp
 
-          # 5. playit deb
+          # 6.  playit deb
           curl -L -o /tmp/playit.deb \
             https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit_0.15.26-1_amd64.deb
           sudo dpkg -i /tmp/playit.deb || sudo apt-get -f install -y
