@@ -18,25 +18,26 @@ jobs:
 
       - name: Install Kali tools + desktop + xrdp + playit
         run: |
-          # 1. add Kali repo & key (only for Kali tools)
+          # 1. add **both** Kali GPG keys (fixes the signature error)
           sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys ED444FF07D8D0BF6
+          sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys ED65462EC8D5E4C5
           echo "deb http://http.kali.org/kali kali-rolling main non-free contrib" | sudo tee /etc/apt/sources.list.d/kali.list
           sudo apt-get update
 
           # 2. Kali meta-package + xfce + xrdp
           sudo apt-get install -y kali-linux-headless kali-desktop-xfce xrdp
 
-          # 3. create local user & password
-          sudo useradd -m -s /bin/bash kali || true
+          # 3. local user & password
+          sudo useradd -m -s /bin/bash kali 2>/dev/null || true
           echo "kali:${{ secrets.KL_PASS }}" | sudo chpasswd
           sudo usermod -aG sudo kali
 
-          # 4. xrdp tweaks (use xfce session)
+          # 4. xrdp tweaks (xfce session)
           echo "startxfce4" | sudo tee -a /etc/xrdp/startwm.sh
           sudo systemctl enable xrdp
           sudo systemctl start xrdp
 
-          # 5. install playit-agent (official .deb)
+          # 5. playit deb
           curl -L -o /tmp/playit.deb \
             https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit_0.15.26-1_amd64.deb
           sudo dpkg -i /tmp/playit.deb || sudo apt-get -f install -y
