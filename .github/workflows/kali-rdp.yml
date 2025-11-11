@@ -51,7 +51,7 @@ jobs:
         env:
           PLAYIT_AUTH_KEY: ${{ secrets.PL }}
         run: |
-          playit-agent --secret "$PLAYIT_AUTH_KEY" 2>&1 | tee playit.log &
+          /usr/bin/playit --secret "$PLAYIT_AUTH_KEY" 2>&1 | tee playit.log &
           for i in {1..60}; do
             addr=$(grep -oP 'https://\K[\w\-\.]+\.ply\.gg:\d+' playit.log | head -n1)
             [[ -n "$addr" ]] && echo ">>> RDP ADDRESS: $addr <<<" && exit 0
