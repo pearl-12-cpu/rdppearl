@@ -1,0 +1,58 @@
+
+name: Kali-Ubuntu-RDP
+
+on:
+  workflow_dispatch:
+    inputs:
+      chain: { description: 'internal', required: false, default: 'false' }
+  schedule:
+    - cron: '0 */12 * * *'          # twice a day, gapless 12 h coverage
+
+jobs:
+  kali-desktop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360            # 6 h hard cap
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add Kali repo + install meta-pkg + desktop + RDP
+        run: |
+          # 1. Kali signing key
+          wget -q -O - https://archive.kali.org/archive-key.asc | sudo apt-key add -
+          echo "deb http://http.kali.org/kali kali-rolling main non-free contrib" | sudo tee /etc/apt/sources.list.d/kali.list
+          sudo apt-get update
+
+          # 2. Kali headless tools + xfce + xrdp + playit
+          sudo apt-get install -y kali-linux-headless kali-desktop-xfce xrdp playit-agent
+
+          # 3. create local user & password
+          sudo useradd -m -s /bin/bash kali
+          echo "kali:${{ secrets.KL_PASS }}" | sudo chpasswd
+          sudo usermod -aG sudo kali
+
+          # 4. xrdp tweaks (use xfce session)
+          echo "startxfce4" | sudo tee -a /etc/xrdp/startwm.sh
+          sudo systemctl enable xrdp
+          sudo systemctl start xrdp
+
+      - name: Launch playit tunnel
+        env:
+          PLAYIT_AUTH_KEY: ${{ secrets.PL }}
+        run: |
+          playit-agent --secret "$PLAYIT_AUTH_KEY" 2>&1 | tee playit.log &
+          for i in {1..60}; do
+            addr=$(grep -oP 'https://\K[\w\-\.]+\.ply\.gg:\d+' playit.log | head -n1)
+            [[ -n "$addr" ]] && echo ">>> RDP ADDRESS: $addr <<<" && exit 0
+            sleep 1
+          done
+          echo "tunnel not found" && exit 1
+
+      - name: Queue follow-up job (only once)
+        if: github.event.inputs.chain != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run '${{ github.workflow }}' -f chain=true
+
+      - name: Keep runner alive
+        run: sleep 21600          # 6 h
