@@ -47,6 +47,13 @@ jobs:
             https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit_0.15.26-1_amd64.deb
           sudo dpkg -i /tmp/playit.deb || sudo apt-get -f install -y
 
+      - name: Find & link playit binary
+        run: |
+          # locate the binary that dpkg installed
+          real_path=$(dpkg -L playit-agent | grep -E '/playit$|/playit-agent$' | head -n1)
+          sudo ln -sf "$real_path" /usr/local/bin/playit
+          sudo chmod +x /usr/local/bin/playit
+          
       - name: Launch playit tunnel
         env:
           PLAYIT_AUTH_KEY: ${{ secrets.PL }}
