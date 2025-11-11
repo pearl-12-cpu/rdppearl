@@ -16,44 +16,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Kali tools + desktop + xrdp + playit
+      - name: Install pen-test tools + xfce + xrdp + playit
         run: |
-          # 1.  add Kali repo + keys
-          sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys ED444FF07D8D0BF6 ED65462EC8D5E4C5
-          echo "deb http://http.kali.org/kali kali-rolling main non-free contrib" | sudo tee /etc/apt/sources.list.d/kali.list
-
-          # 2.  APT pin: accept Kali *binaries* but never overwrite Ubuntu base
-          sudo tee /etc/apt/preferences.d/kali-pin <<'EOF'
-          Package: *
-          Pin: release o=Kali
-          Pin-Priority: 100
-
-          Package: metasploit-framework nmap burpsuite john hashcat gobuster dirb sqlmap ffuf feroxbuster impacket-scripts
-          Pin: release o=Kali
-          Pin-Priority: 500
-          EOF
+          # 1.  pure Ubuntu repos (no Kali source) → zero conflicts
           sudo apt-get update
-
-          # 3.  install single tools (no meta-package) + xfce + xrdp
           sudo apt-get install -y \
-            metasploit-framework nmap burpsuite john hashcat gobuster dirb sqlmap ffuf feroxbuster \
+            nmap metasploit-framework john hashcat sqlmap gobuster dirb ffuf feroxbuster \
             xfce4 xfce4-goodies xrdp
 
-          # 4.  local user
+          # 2.  create user
           sudo useradd -m -s /bin/bash kali 2>/dev/null || true
           echo "kali:${{ secrets.KL_PASS }}" | sudo chpasswd
           sudo usermod -aG sudo kali
 
-          # 5.  xrdp tweaks
+          # 3.  xrdp tweaks
           echo "startxfce4" | sudo tee -a /etc/xrdp/startwm.sh
           sudo systemctl enable xrdp
           sudo systemctl start xrdp
 
-          # 6.  playit deb
+          # 4.  playit deb
           curl -L -o /tmp/playit.deb \
             https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit_0.15.26-1_amd64.deb
           sudo dpkg -i /tmp/playit.deb || sudo apt-get -f install -y
 
+          # Kali wallpaper + icon theme (no libs touched)
+          wget -q https://gitlab.com/kalilinux/packages/kali-wallpapers/-/raw/kali/master/kali-wallpaper_2023.4/kali-wallpaper-dragon.jpg \
+            -O /tmp/kali.jpg
+          sudo mkdir -p /usr/share/backgrounds/xfce
+          sudo cp /tmp/kali.jpg /usr/share/backgrounds/xfce/
+          xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor0/workspace0/last-image \
+            -s /usr/share/backgrounds/xfce/kali-wallpaper-dragon.jpg || true
+            
       - name: Launch playit tunnel
         env:
           PLAYIT_AUTH_KEY: ${{ secrets.PL }}
