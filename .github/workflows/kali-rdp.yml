@@ -29,7 +29,8 @@ jobs:
             xfce4 xfce4-goodies xrdp
 
           # 3.  missing tools → snap (official, static, no deps)
-          sudo snap install feroxbuster metasploit-framework --classic
+          sudo snap install feroxbuster --classic
+          sudo snap install metasploit-framework --classic
 
           # 4.  create user
           sudo useradd -m -s /bin/bash kali 2>/dev/null || true
