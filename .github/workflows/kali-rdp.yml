@@ -18,34 +18,33 @@ jobs:
 
       - name: Install tools + xfce + xrdp + playit
         run: |
-          # 1.  enable universe & security back-ports (gives nmap, john, hashcat, sqlmap, gobuster, dirb, ffuf)
-          sudo add-apt-repository -y universe
-          sudo add-apt-repository -y restricted
+          # 1.  Ubuntu native tools
+          sudo add-apt-repository -y universe restricted
           sudo apt-get update
-
-          # 2.  install what Ubuntu already ships
           sudo apt-get install -y \
             nmap john hashcat sqlmap gobuster dirb ffuf \
             xfce4 xfce4-goodies xrdp
 
-          # 3.  missing tools → snap (official, static, no deps)
+          # 2.  missing tools → Snap (separate calls)
           sudo snap install feroxbuster --classic
           sudo snap install metasploit-framework --classic
 
-          # 4.  create user
+          # 3.  create user
           sudo useradd -m -s /bin/bash kali 2>/dev/null || true
           echo "kali:${{ secrets.KL_PASS }}" | sudo chpasswd
           sudo usermod -aG sudo kali
 
-          # 5.  xrdp tweaks
+          # 4.  xrdp tweaks
           echo "startxfce4" | sudo tee -a /etc/xrdp/startwm.sh
           sudo systemctl enable xrdp
           sudo systemctl start xrdp
 
-          # 6.  playit deb
-          curl -L -o /tmp/playit.deb \
-            https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit_0.15.26-1_amd64.deb
-          sudo dpkg -i /tmp/playit.deb || sudo apt-get -f install -y
+          # 5.  playit static binary (no deb, no dpkg, no drama)
+          curl -L -o /tmp/playit.gz \
+            https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-x86_64-v0.15.26.tar.gz
+          tar -xf /tmp/playit.gz -C /tmp
+          sudo mv /tmp/playit /usr/local/bin/playit
+          sudo chmod +x /usr/local/bin/playit
 
       - name: Find & link playit binary
         run: |
