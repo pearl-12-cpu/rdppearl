@@ -16,18 +16,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Add Kali repo + install meta-pkg + desktop + RDP
+      - name: Install Kali tools + desktop + xrdp + playit
         run: |
-          # 1. Kali signing key
-          wget -q -O - https://archive.kali.org/archive-key.asc | sudo apt-key add -
+          # 1. add Kali repo & key (only for Kali tools)
+          sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys ED444FF07D8D0BF6
           echo "deb http://http.kali.org/kali kali-rolling main non-free contrib" | sudo tee /etc/apt/sources.list.d/kali.list
           sudo apt-get update
 
-          # 2. Kali headless tools + xfce + xrdp + playit
-          sudo apt-get install -y kali-linux-headless kali-desktop-xfce xrdp playit-agent
+          # 2. Kali meta-package + xfce + xrdp
+          sudo apt-get install -y kali-linux-headless kali-desktop-xfce xrdp
 
           # 3. create local user & password
-          sudo useradd -m -s /bin/bash kali
+          sudo useradd -m -s /bin/bash kali || true
           echo "kali:${{ secrets.KL_PASS }}" | sudo chpasswd
           sudo usermod -aG sudo kali
 
@@ -35,6 +35,11 @@ jobs:
           echo "startxfce4" | sudo tee -a /etc/xrdp/startwm.sh
           sudo systemctl enable xrdp
           sudo systemctl start xrdp
+
+          # 5. install playit-agent (official .deb)
+          curl -L -o /tmp/playit.deb \
+            https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit_0.15.26-1_amd64.deb
+          sudo dpkg -i /tmp/playit.deb || sudo apt-get -f install -y
 
       - name: Launch playit tunnel
         env:
