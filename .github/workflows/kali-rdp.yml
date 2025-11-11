@@ -16,37 +16,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install pen-test tools + xfce + xrdp + playit
+      - name: Install tools + xfce + xrdp + playit
         run: |
-          # 1.  pure Ubuntu repos (no Kali source) → zero conflicts
+          # 1.  enable universe & security back-ports (gives nmap, john, hashcat, sqlmap, gobuster, dirb, ffuf)
+          sudo add-apt-repository -y universe
+          sudo add-apt-repository -y restricted
           sudo apt-get update
+
+          # 2.  install what Ubuntu already ships
           sudo apt-get install -y \
-            nmap metasploit-framework john hashcat sqlmap gobuster dirb ffuf feroxbuster \
+            nmap john hashcat sqlmap gobuster dirb ffuf \
             xfce4 xfce4-goodies xrdp
 
-          # 2.  create user
+          # 3.  missing tools → snap (official, static, no deps)
+          sudo snap install feroxbuster metasploit-framework --classic
+
+          # 4.  create user
           sudo useradd -m -s /bin/bash kali 2>/dev/null || true
           echo "kali:${{ secrets.KL_PASS }}" | sudo chpasswd
           sudo usermod -aG sudo kali
 
-          # 3.  xrdp tweaks
+          # 5.  xrdp tweaks
           echo "startxfce4" | sudo tee -a /etc/xrdp/startwm.sh
           sudo systemctl enable xrdp
           sudo systemctl start xrdp
 
-          # 4.  playit deb
+          # 6.  playit deb
           curl -L -o /tmp/playit.deb \
             https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit_0.15.26-1_amd64.deb
           sudo dpkg -i /tmp/playit.deb || sudo apt-get -f install -y
 
-          # Kali wallpaper + icon theme (no libs touched)
-          wget -q https://gitlab.com/kalilinux/packages/kali-wallpapers/-/raw/kali/master/kali-wallpaper_2023.4/kali-wallpaper-dragon.jpg \
-            -O /tmp/kali.jpg
-          sudo mkdir -p /usr/share/backgrounds/xfce
-          sudo cp /tmp/kali.jpg /usr/share/backgrounds/xfce/
-          xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor0/workspace0/last-image \
-            -s /usr/share/backgrounds/xfce/kali-wallpaper-dragon.jpg || true
-            
       - name: Launch playit tunnel
         env:
           PLAYIT_AUTH_KEY: ${{ secrets.PL }}
