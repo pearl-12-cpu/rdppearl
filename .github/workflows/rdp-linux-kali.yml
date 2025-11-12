@@ -62,63 +62,61 @@ jobs:
           pip3 install requests bs4 scrapy
           echo "✅ Python tools installed"
 
-      - name: Setup Playit Tunnel (WORKING METHOD)
+      - name: Setup Playit Tunnel (MATCHING WINDOWS APPROACH)
         env:
           PLAYIT_KEY: ${{ secrets.PLAYIT_KEY }}
         run: |
-          echo "🌐 Setting up Playit tunnel..."
+          echo "🌐 Setting up Playit tunnel (using Windows-proven method)..."
           
-          # Download playit - WORKING METHOD
+          # Download the EXACT SAME VERSION that works on Windows
           echo "📥 Downloading playit..."
-          curl -L -o playit.tar.gz "https://github.com/playit-cloud/playit-agent/releases/download/v0.9.3/playit-0.9.3-x86_64-linux.tar.gz" ||
-          curl -L -o playit.tar.gz "https://github.com/playit-cloud/playit-agent/releases/download/v0.9.0/playit-linux-x86_64.tar.gz" ||
-          (echo "❌ Failed to download playit" && exit 1)
+          wget -q "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-x86_64" -O playit
           
-          # Extract and install
-          tar -xzf playit.tar.gz
+          # Verify download
+          if [ ! -s "playit" ]; then
+            echo "❌ Download failed - file is empty"
+            exit 1
+          fi
+          
+          echo "✅ Download successful - file size: $(wc -c < playit) bytes"
+          
+          # Make executable and install
+          chmod +x playit
           sudo mv playit /usr/local/bin/
-          sudo chmod +x /usr/local/bin/playit
-          echo "✅ Playit installed successfully"
+          echo "✅ Playit installed"
 
-          # Start tunnel
+          # Start tunnel (MATCHING WINDOWS APPROACH)
           echo "🚀 Starting tunnel..."
-          nohup playit --secret "$PLAYIT_KEY" --tunnel 3390 > playit.log 2>&1 &
+          /usr/local/bin/playit --secret "$PLAYIT_KEY" --tunnel 3390 2>&1 | tee playit.log &
+          TUNNEL_PID=$!
           
-          # Wait longer and check multiple times
-          echo "⏳ Waiting for tunnel to establish..."
+          # Wait for tunnel to establish (longer wait)
+          echo "⏳ Waiting for tunnel to establish (up to 60 seconds)..."
           for i in {1..60}; do
             if grep -q "https://" playit.log; then
+              echo "✅ Tunnel established!"
               break
             fi
-            sleep 2
+            sleep 1
           done
           
-          # Get connection details with multiple pattern attempts
-          TUNNEL_URL=$(grep -oE 'https://[a-zA-Z0-9.-]+\.ply\.gg:[0-9]+' playit.log | head -1)
-          if [ -z "$TUNNEL_URL" ]; then
-            TUNNEL_URL=$(grep -oE 'tunnel started at: https://[^ ]+' playit.log | cut -d' ' -f4)
-          fi
-          if [ -z "$TUNNEL_URL" ]; then
-            TUNNEL_URL=$(grep -oE 'https://[^ ]*\.playit\.gg[^ ]*' playit.log | head -1)
-          fi
+          # Extract address (MATCHING WINDOWS PATTERN)
+          ADDRESS=$(grep -oP 'https://\K[\w\-\.]+\.ply\.gg:\d+' playit.log | head -1)
           
-          if [ -n "$TUNNEL_URL" ]; then
+          if [ -n "$ADDRESS" ]; then
             echo "🎯 RDP Connection Details:" 
-            echo "Address: $(echo $TUNNEL_URL | cut -d'/' -f3 | cut -d: -f1)"
-            echo "Port: $(echo $TUNNEL_URL | cut -d: -f3)"
-            echo "Full URL: $TUNNEL_URL"
+            echo ">>> RDP ADDRESS: $ADDRESS <<<"
             echo "Username: kali"
             echo "Password: kali123456"
-            echo "📱 Use Windows RDP app on your phone to connect!"
-            
-            # Also show the log for debugging
-            echo "📋 Recent tunnel log:"
-            tail -20 playit.log
+            echo ""
+            echo "📱 In Windows RDP app on your phone:"
+            echo "Computer: $(echo $ADDRESS | cut -d: -f1)"
+            echo "Port: $(echo $ADDRESS | cut -d: -f2)"
           else
-            echo "❌ Failed to get tunnel URL"
-            echo "📋 Full tunnel log:"
+            echo "❌ No tunnel URL found in log"
+            echo "📋 Checking log content:"
             cat playit.log
-            echo "🔄 Trying to continue anyway - tunnel might still work..."
+            echo "🔄 Continuing anyway - tunnel might still work..."
           fi
 
       - name: Keep Alive with Countdown
@@ -127,8 +125,7 @@ jobs:
           echo "🕐 RDP session active for $DURATION minutes"
           echo "🔧 Tools available: nmap, sqlmap, ffuf, gobuster, wireshark, john, hashcat, etc."
           echo ""
-          echo "💡 If connection details didn't show above, check the playit.log file in the workspace"
-          echo "💡 You can also try checking https://playit.gg/account/tunnels for active tunnels"
+          echo "💡 Remember to connect using the RDP address shown above!"
           
           MINUTES=$DURATION
           for ((i=MINUTES; i>0; i--)); do
