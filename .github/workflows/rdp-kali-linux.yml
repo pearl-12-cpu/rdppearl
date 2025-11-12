@@ -52,18 +52,18 @@ jobs:
           
           # FIX: Create proper startwm.sh
           sudo tee /etc/xrdp/startwm.sh > /dev/null << 'EOF'
-#!/bin/sh
-if [ -r /etc/default/locale ]; then
-  . /etc/default/locale
-  export LANG LANGUAGE
-fi
-export XDG_SESSION_TYPE=x11
-export XDG_DATA_DIRS=/usr/share/xfce4:/usr/share:/usr/local/share
-export XDG_CONFIG_DIRS=/etc/xdg
-export XDG_CURRENT_DESKTOP=XFCE
-export XDG_SESSION_DESKTOP=xfce
-startxfce4
-EOF
+          #!/bin/sh
+          if [ -r /etc/default/locale ]; then
+          . /etc/default/locale
+          export LANG LANGUAGE
+          fi
+          export XDG_SESSION_TYPE=x11
+          export XDG_DATA_DIRS=/usr/share/xfce4:/usr/share:/usr/local/share
+          export XDG_CONFIG_DIRS=/etc/xdg
+          export XDG_CURRENT_DESKTOP=XFCE
+          export XDG_SESSION_DESKTOP=xfce
+          startxfce4
+          EOF
 
           sudo chmod +x /etc/xrdp/startwm.sh
 
