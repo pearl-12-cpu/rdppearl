@@ -18,6 +18,7 @@ jobs:
 
       - name: Install tools + xfce + xrdp + playit
         run: |
+          set -e                          # fail-fast
           # 1.  Ubuntu native tools
           sudo add-apt-repository -y universe restricted
           sudo apt-get update
@@ -29,7 +30,7 @@ jobs:
           sudo snap install feroxbuster --classic
           sudo snap install metasploit-framework --classic
 
-          # 3.  create user
+          # 3.  user
           sudo useradd -m -s /bin/bash kali 2>/dev/null || true
           echo "kali:${{ secrets.KL_PASS }}" | sudo chpasswd
           sudo usermod -aG sudo kali
@@ -39,18 +40,14 @@ jobs:
           sudo systemctl enable xrdp
           sudo systemctl start xrdp
 
-          # 5.  playit static binary (no deb, no dpkg, no drama)
-          curl -L -o /tmp/playit.gz \
-            https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-x86_64-v0.15.26.tar.gz
-          tar -xf /tmp/playit.gz -C /tmp
-          sudo mv /tmp/playit /usr/local/bin/playit
-          sudo chmod +x /usr/local/bin/playit
-
-      - name: Find & link playit binary
-        run: |
-          # locate the binary that dpkg installed
-          real_path=$(dpkg -L playit-agent | grep -E '/playit$|/playit-agent$' | head -n1)
-          sudo ln -sf "$real_path" /usr/local/bin/playit
+          # 5.  playit - latest release (dynamic)
+          curl -s https://api.github.com/repos/playit-cloud/playit-agent/releases/latest \
+            | grep -oP '"tag_name": "\K(.*)(?=")' > /tmp/ver
+          VER=$(cat /tmp/ver)
+          curl -L -o /tmp/playit.tar.gz \
+            https://github.com/playit-cloud/playit-agent/releases/download/${VER}/playit-linux-x86_64-${VER}.tar.gz
+          tar -xf /tmp/playit.tar.gz -C /tmp
+          sudo mv /tmp/playit /usr/local/bin/
           sudo chmod +x /usr/local/bin/playit
           
       - name: Launch playit tunnel
