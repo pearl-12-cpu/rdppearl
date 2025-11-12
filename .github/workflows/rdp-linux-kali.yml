@@ -12,7 +12,7 @@ on:
 jobs:
   kali-rdp:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ github.event.inputs.duration || 180 }}
+    timeout-minutes: 360  # Fixed value - maximum allowed
 
     steps:
       - name: Setup Kali Desktop Environment
@@ -66,12 +66,14 @@ jobs:
 
       - name: Keep Alive with Countdown
         run: |
-          echo "🕐 RDP session active for ${{ github.event.inputs.duration || 180 }} minutes"
+          # Use the input duration or default to 180 minutes
+          DURATION=${{ github.event.inputs.duration || 180 }}
+          echo "🕐 RDP session active for $DURATION minutes"
           echo "⏰ Session started at: $(date)"
-          echo "🔌 Will auto-terminate at: $(date -d '+${{ github.event.inputs.duration || 180 }} minutes')"
+          echo "🔌 Will auto-terminate at: $(date -d '+$DURATION minutes')"
           
           # Countdown timer
-          MINUTES=$(( ${{ github.event.inputs.duration || 180 }} ))
+          MINUTES=$DURATION
           for ((i=MINUTES; i>0; i--)); do
             echo "⏳ Time remaining: ${i} minutes"
             sleep 60
