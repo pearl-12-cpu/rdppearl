@@ -1,5 +1,5 @@
 
-name: Kali-RDP-Mobile
+name: Kali-RDP-Mobile-Manual
 
 on:
   workflow_dispatch:
@@ -15,17 +15,18 @@ jobs:
     timeout-minutes: 360
 
     steps:
+      - name: Checkout repository (includes manual playit binary)
+        uses: actions/checkout@v4
+
       - name: Setup Ubuntu Desktop with Security Tools
         run: |
           set -e
           echo "🔧 Starting installation process..."
           
-          # Add necessary repositories
           sudo add-apt-repository universe -y
           sudo add-apt-repository multiverse -y
           sudo apt-get update
           
-          # Install desktop environment
           echo "📀 Installing desktop environment..."
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
             xfce4 xfce4-goodies \
@@ -33,7 +34,6 @@ jobs:
             firefox \
             nano vim curl wget unzip git
 
-          # Install security tools that WORK
           echo "🛠️ Installing security tools..."
           sudo apt-get install -y \
             nmap nikto sqlmap gobuster dirb ffuf \
@@ -62,37 +62,33 @@ jobs:
           pip3 install requests bs4 scrapy
           echo "✅ Python tools installed"
 
-      - name: Setup Playit Tunnel (CORRECTED URL)
+      - name: Setup Playit Tunnel (USING MANUAL BINARY - LATEST VERSION)
         env:
           PLAYIT_KEY: ${{ secrets.PLAYIT_KEY }}
         run: |
-          echo "🌐 Setting up Playit tunnel..."
+          echo "🌐 Setting up Playit tunnel using manually uploaded binary..."
           
-          # CORRECT URL (using dots, not underscores, and correct spelling)
-          PLAYIT_URL="https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-x86_64"
-          echo "📥 Downloading from: $PLAYIT_URL"
+          # Use the manually uploaded binary
+          echo "📁 Using local playit binary..."
+          cp ./binaries/playit ./playit
           
-          # Download with verification
-          if ! wget -q "$PLAYIT_URL" -O playit; then
-            echo "❌ wget failed, trying curl..."
-            curl -L "$PLAYIT_URL" -o playit
-          fi
-          
-          # VERIFY the download is actually a binary (not HTML error page)
-          file playit | grep -q "ELF" || {
-            echo "❌ Downloaded file is not a binary - it's probably an HTML error page"
-            echo "📋 File type: $(file playit)"
-            echo "📋 First few bytes: $(head -c 100 playit)"
-            exit 1
-          }
-          
-          echo "✅ Download verified - it's a real binary"
+          # Verify it's a real binary
+          echo "🔍 Verifying binary..."
+          file playit
+          ls -lh playit
           echo "📏 File size: $(wc -c < playit) bytes"
+          
+          if ! file playit | grep -q "ELF"; then
+            echo "❌ ERROR: File is not a valid binary!"
+            echo "💡 Make sure you downloaded: playit-linux-amd64"
+            echo "💡 From: https://github.com/playit-cloud/playit-agent/releases"
+            exit 1
+          fi
           
           # Make executable and install
           chmod +x playit
           sudo mv playit /usr/local/bin/
-          echo "✅ Playit installed"
+          echo "✅ Playit installed successfully"
 
           # Start tunnel
           echo "🚀 Starting tunnel..."
@@ -100,29 +96,23 @@ jobs:
           TUNNEL_PID=$!
           
           # Wait for tunnel to establish
-          echo "⏳ Waiting for tunnel to establish (this can take 30-60 seconds)..."
+          echo "⏳ Waiting for tunnel to establish (up to 90 seconds)..."
           for i in {1..90}; do
             if grep -q "https://.*\.ply\.gg" playit.log; then
-              echo "✅ Tunnel established!"
+              echo "✅ Tunnel established after $i seconds!"
               break
             fi
             if [ $i -eq 30 ]; then
-              echo "⏰ Still waiting... (30 seconds passed)"
+              echo "⏰ Still waiting... (30 seconds)"
             fi
             if [ $i -eq 60 ]; then
-              echo "⏰ Still waiting... (60 seconds passed)"
+              echo "⏰ Still waiting... (60 seconds)"
             fi
             sleep 1
           done
           
-          # Extract address with multiple pattern attempts
+          # Extract connection details
           ADDRESS=$(grep -oP 'https://\K[\w\-\.]+\.ply\.gg:\d+' playit.log | head -1)
-          if [ -z "$ADDRESS" ]; then
-            ADDRESS=$(grep -o 'tunnel started at: https://[^ ]*' playit.log | cut -d' ' -f4 | cut -d'/' -f3)
-          fi
-          if [ -z "$ADDRESS" ]; then
-            ADDRESS=$(grep -o 'https://[a-zA-Z0-9.-]*\.ply\.gg:[0-9]*' playit.log | head -1 | cut -d'/' -f3)
-          fi
           
           if [ -n "$ADDRESS" ]; then
             echo ""
@@ -135,13 +125,15 @@ jobs:
             echo "Computer: $(echo $ADDRESS | cut -d: -f1)"
             echo "Port: $(echo $ADDRESS | cut -d: -f2)"
             echo "🎯 🎯 🎯"
+            
+            # Show recent log for debugging
+            echo "📋 Recent tunnel log:"
+            tail -10 playit.log
           else
             echo "❌ No tunnel URL found after 90 seconds"
-            echo "📋 Checking log for errors:"
-            grep -i "error\|fail\|warn" playit.log || echo "No obvious errors in log"
-            echo "📋 Recent log:"
-            tail -20 playit.log
-            echo "❌ Tunnel failed - cannot provide connection details"
+            echo "📋 Full log:"
+            cat playit.log
+            echo "❌ Tunnel failed - check your PLAYIT_KEY secret"
             exit 1
           fi
 
@@ -149,7 +141,6 @@ jobs:
         run: |
           DURATION=${{ github.event.inputs.duration || 180 }}
           echo "🕐 RDP session active for $DURATION minutes"
-          echo "💡 If connection details above didn't show, the tunnel failed"
           echo "🔧 Tools available: nmap, sqlmap, ffuf, gobuster, etc."
           
           MINUTES=$DURATION
