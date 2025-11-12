@@ -57,51 +57,44 @@ jobs:
 
           echo "✅ Desktop environment ready!"
 
-      - name: Install Feroxbuster (Fixed)
-        run: |
-          echo "📥 Installing Feroxbuster..."
-          # Method 1: Try different download URL
-          wget -q "https://github.com/epi052/feroxbuster/releases/latest/download/feroxbuster-linux-x86_64.zip" || \
-          # Method 2: If that fails, install via cargo
-          (echo "📦 Installing via cargo..." && \
-           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
-           source $HOME/.cargo/env && \
-           cargo install feroxbuster) || \
-          # Method 3: If all fails, skip it
-          echo "⚠️ Feroxbuster installation failed, skipping..."
-          
-          echo "✅ Feroxbuster installation attempt completed"
-
       - name: Install Additional Python Tools
         run: |
           pip3 install requests bs4 scrapy
           echo "✅ Python tools installed"
 
-      - name: Verify Installation
-        run: |
-          echo "🔍 Verifying installed tools..."
-          which nmap && echo "✅ nmap"
-          which sqlmap && echo "✅ sqlmap" 
-          which ffuf && echo "✅ ffuf"
-          which gobuster && echo "✅ gobuster"
-          which nc && echo "✅ netcat"
-          echo "✅ All critical tools installed!"
-
-      - name: Setup Playit Tunnel (RDP Access)
+      - name: Setup Playit Tunnel (RDP Access) - FIXED
         env:
           PLAYIT_KEY: ${{ secrets.PLAYIT_KEY }}
         run: |
           echo "🌐 Setting up Playit tunnel..."
-          wget -q https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-x86_64-v0.15.26.tar.gz || \
-          wget -q https://github.com/playit-cloud/playit-agent/releases/download/v0.15.13/playit-linux-x86_64.tar.gz
           
-          tar -xzf playit-linux*.tar.gz
+          # Try multiple download methods
+          echo "📥 Attempting to download playit..."
+          
+          # Method 1: Direct download from latest
+          if ! wget -q "https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-linux-x86_64" -O playit; then
+            echo "🔄 Method 1 failed, trying Method 2..."
+            # Method 2: Specific version
+            if ! wget -q "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.13/playit-linux-x86_64" -O playit; then
+              echo "🔄 Method 2 failed, trying Method 3..."
+              # Method 3: Using curl instead
+              curl -L -o playit "https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-linux-x86_64" || {
+                echo "❌ All download methods failed"
+                exit 1
+              }
+            fi
+          fi
+          
+          echo "✅ Playit downloaded successfully"
           sudo mv playit /usr/local/bin/
           sudo chmod +x /usr/local/bin/playit
 
+          # Start tunnel
+          echo "🚀 Starting tunnel..."
           nohup playit --secret "$PLAYIT_KEY" --tunnel 3390 > playit.log 2>&1 &
-          sleep 25
+          sleep 30
 
+          # Get connection details
           TUNNEL_URL=$(grep -o 'https://[^ ]*\.ply\.gg' playit.log | head -1)
           if [ -n "$TUNNEL_URL" ]; then
             echo "🎯 RDP Connection Details:" 
@@ -111,88 +104,28 @@ jobs:
             echo "Password: kali123456"
             echo "📱 Use Windows RDP app on your phone to connect!"
           else
-            echo "❌ Failed to get tunnel URL"
+            echo "❌ Failed to get tunnel URL, checking log..."
             cat playit.log
+            echo "🔄 Trying alternative method to get URL..."
+            # Alternative method to find URL
+            TUNNEL_URL=$(grep -o 'https://[a-zA-Z0-9.-]*\.ply\.gg:[0-9]*' playit.log | head -1)
+            if [ -n "$TUNNEL_URL" ]; then
+              echo "🎯 RDP Connection Details (Alternative):" 
+              echo "Address: $TUNNEL_URL"
+              echo "Username: kali"
+              echo "Password: kali123456"
+            else
+              echo "❌ Completely failed to establish tunnel"
+              exit 1
+            fi
           fi
 
       - name: Keep Alive with Countdown
         run: |
           DURATION=${{ github.event.inputs.duration || 180 }}
-          echo "🕐 RDP session active for $DURATION minutes"
+          echo "🕐 RDP session active for $TUNNEL_URL for $DURATION minutes"
           echo "🔧 Tools available: nmap, sqlmap, ffuf, gobuster, wireshark, john, hashcat, etc."
           
-          MINUTES=$DURATION
-          for ((i=MINUTES; i>0; i--)); do
-            echo "⏳ Time remaining: ${i} minutes"
-            sleep 60
-          done
-          echo "❌ Session ending now"          DURATION=${{ github.event.inputs.duration || 180 }}
-          echo "🕐 RDP session active for $DURATION minutes"
-          echo "🔧 Tools available: nmap, sqlmap, feroxbuster, wireshark, john, hashcat, etc."
-          
-          MINUTES=$DURATION
-          for ((i=MINUTES; i>0; i--)); do
-            echo "⏳ Time remaining: ${i} minutes"
-            sleep 60
-          done
-          echo "❌ Session ending now"
-          TUNNEL_URL=$(grep -o 'https://[^ ]*\.ply\.gg' playit.log | head -1)
-          echo "🎯 RDP Connection Details:" 
-          echo "Address: $TUNNEL_URL"
-          echo "Port: 3390"
-          echo "Username: kali"
-          echo "Password: kali123456"
-          echo "📱 Use Windows RDP app on your phone to connect!"
-
-      - name: Keep Alive with Countdown
-        run: |
-          DURATION=${{ github.event.inputs.duration || 180 }}
-          echo "🕐 RDP session active for $DURATION minutes"
-          echo "🔧 Tools available: nmap, metasploit, sqlmap, feroxbuster, wireshark, etc."
-          
-          MINUTES=$DURATION
-          for ((i=MINUTES; i>0; i--)); do
-            echo "⏳ Time remaining: ${i} minutes"
-            sleep 60
-          done
-          echo "❌ Session ending now"          echo "🎯 RDP Connection Details:" 
-          echo "Address: $TUNNEL_URL"
-          echo "Port: 3390"
-          echo "Username: kali"
-          echo "Password: kali123456"
-          echo "📱 Use Windows RDP app on your phone to connect!"
-
-      - name: Keep Alive with Countdown
-        run: |
-          DURATION=${{ github.event.inputs.duration || 180 }}
-          echo "🕐 RDP session active for $DURATION minutes"
-          echo "🔧 Tools available: nmap, metasploit, sqlmap, burpsuite, wireshark, etc."
-          
-          MINUTES=$DURATION
-          for ((i=MINUTES; i>0; i--)); do
-            echo "⏳ Time remaining: ${i} minutes"
-            sleep 60
-          done
-          echo "❌ Session ending now"          
-          echo "🎯 RDP Connection Details:" 
-          echo "Address: $TUNNEL_URL"
-          echo "Port: 3390"
-          echo "Username: kali"
-          echo "Password: kali123456"
-          echo "📱 Use Windows RDP app on your phone to connect!"
-
-      - name: Keep Alive with Countdown
-        run: |
-          # Use the input duration or default to 180 minutes
-          DURATION=${{ github.event.inputs.duration || 180 }}
-          echo "🕐 RDP session active for $DURATION minutes"
-          echo "⏰ Session started at: $(date)"
-          echo "🔌 Will auto-terminate at: $(date -d '+$DURATION minutes')"
-          echo ""
-          echo "🔧 Available tools: nmap, nikto, sqlmap, metasploit, gobuster, ffuf, feroxbuster, john, hashcat, hydra"
-          echo ""
-          
-          # Countdown timer
           MINUTES=$DURATION
           for ((i=MINUTES; i>0; i--)); do
             echo "⏳ Time remaining: ${i} minutes"
