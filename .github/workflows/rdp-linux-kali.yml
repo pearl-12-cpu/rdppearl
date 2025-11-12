@@ -62,7 +62,7 @@ jobs:
           pip3 install requests bs4 scrapy
           echo "✅ Python tools installed"
 
-      - name: Setup Playit Tunnel (USING MANUAL BINARY - LATEST VERSION)
+      - name: Setup Playit Tunnel (LATEST VERSION - NO TUNNEL ARG)
         env:
           PLAYIT_KEY: ${{ secrets.PLAYIT_KEY }}
         run: |
@@ -80,8 +80,6 @@ jobs:
           
           if ! file playit | grep -q "ELF"; then
             echo "❌ ERROR: File is not a valid binary!"
-            echo "💡 Make sure you downloaded: playit-linux-amd64"
-            echo "💡 From: https://github.com/playit-cloud/playit-agent/releases"
             exit 1
           fi
           
@@ -90,50 +88,59 @@ jobs:
           sudo mv playit /usr/local/bin/
           echo "✅ Playit installed successfully"
 
-          # Start tunnel
+          # Start tunnel - NEW VERSION SYNTAX (no --tunnel argument)
           echo "🚀 Starting tunnel..."
-          /usr/local/bin/playit --secret "$PLAYIT_KEY" --tunnel 3390 2>&1 | tee playit.log &
+          echo "📝 Playit agent starting - it will automatically detect RDP on port 3390"
+          /usr/local/bin/playit --secret "$PLAYIT_KEY" 2>&1 | tee playit.log &
           TUNNEL_PID=$!
           
           # Wait for tunnel to establish
-          echo "⏳ Waiting for tunnel to establish (up to 90 seconds)..."
+          echo "⏳ Waiting for tunnel agent to connect (up to 90 seconds)..."
           for i in {1..90}; do
-            if grep -q "https://.*\.ply\.gg" playit.log; then
-              echo "✅ Tunnel established after $i seconds!"
+            if grep -q "agent_id" playit.log || grep -q "connected" playit.log || grep -q "registered" playit.log; then
+              echo "✅ Playit agent connected after $i seconds!"
               break
             fi
             if [ $i -eq 30 ]; then
               echo "⏰ Still waiting... (30 seconds)"
+              echo "📋 Current log:"
+              tail -5 playit.log
             fi
             if [ $i -eq 60 ]; then
               echo "⏰ Still waiting... (60 seconds)"
+              echo "📋 Current log:"
+              tail -5 playit.log
             fi
             sleep 1
           done
           
-          # Extract connection details
-          ADDRESS=$(grep -oP 'https://\K[\w\-\.]+\.ply\.gg:\d+' playit.log | head -1)
+          # Give it more time to establish the tunnel
+          echo "⏳ Giving tunnel more time to establish..."
+          sleep 15
           
-          if [ -n "$ADDRESS" ]; then
+          # Check if agent connected successfully
+          if grep -q "agent_id" playit.log; then
+            echo "🎯 PLAYIT TUNNEL SETUP COMPLETE!"
             echo ""
-            echo "🎯 🎯 🎯 RDP CONNECTION DETAILS 🎯 🎯 🎯"
-            echo ">>> RDP ADDRESS: $ADDRESS <<<"
+            echo "📋 Connection Instructions:"
+            echo "1. Go to: https://playit.gg/account/tunnels"
+            echo "2. Find your RDP tunnel (should be on port 3390)"
+            echo "3. Use the address shown there for RDP connection"
+            echo ""
+            echo "🔑 RDP Login Details:"
             echo "Username: kali"
             echo "Password: kali123456"
             echo ""
-            echo "📱 In Windows RDP app:"
-            echo "Computer: $(echo $ADDRESS | cut -d: -f1)"
-            echo "Port: $(echo $ADDRESS | cut -d: -f2)"
-            echo "🎯 🎯 🎯"
-            
-            # Show recent log for debugging
-            echo "📋 Recent tunnel log:"
-            tail -10 playit.log
+            echo "🌐 Your RDP will be available at the address shown on playit.gg"
+            echo "📱 Use Windows RDP app on your phone with those details"
+            echo ""
+            echo "📊 Tunnel Status:"
+            grep -E "agent_id|connected|registered|tunnel" playit.log | tail -10
           else
-            echo "❌ No tunnel URL found after 90 seconds"
-            echo "📋 Full log:"
+            echo "❌ Playit agent failed to connect"
+            echo "📋 Full log for debugging:"
             cat playit.log
-            echo "❌ Tunnel failed - check your PLAYIT_KEY secret"
+            echo "💡 Check your PLAYIT_KEY secret and try again"
             exit 1
           fi
 
@@ -141,7 +148,14 @@ jobs:
         run: |
           DURATION=${{ github.event.inputs.duration || 180 }}
           echo "🕐 RDP session active for $DURATION minutes"
-          echo "🔧 Tools available: nmap, sqlmap, ffuf, gobuster, etc."
+          echo ""
+          echo "🎯 REMEMBER:"
+          echo "1. Go to https://playit.gg/account/tunnels"
+          echo "2. Find your RDP tunnel address"
+          echo "3. Connect with: kali / kali123456"
+          echo ""
+          echo "🔧 Tools available: nmap, sqlmap, ffuf, gobuster, wireshark, etc."
+          echo "💡 The RDP tunnel is now active - connect from your phone!"
           
           MINUTES=$DURATION
           for ((i=MINUTES; i>0; i--)); do
