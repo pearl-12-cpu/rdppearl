@@ -62,19 +62,53 @@ jobs:
           pip3 install requests bs4 scrapy
           echo "✅ Python tools installed"
 
-      - name: Setup Playit Tunnel (MATCHING WINDOWS APPROACH)
+      - name: Setup Playit Tunnel (PROXY DOWNLOAD METHOD)
         env:
           PLAYIT_KEY: ${{ secrets.PLAYIT_KEY }}
         run: |
-          echo "🌐 Setting up Playit tunnel (using Windows-proven method)..."
+          echo "🌐 Setting up Playit tunnel with proxy download..."
           
-          # Download the EXACT SAME VERSION that works on Windows
-          echo "📥 Downloading playit..."
-          wget -q "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-x86_64" -O playit
+          # Method 1: Try with different user agent and retries
+          echo "📥 Attempting download with retries..."
+          for i in {1..5}; do
+            echo "Attempt $i..."
+            if wget --timeout=30 --tries=3 --user-agent="Mozilla/5.0" \
+               "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-x86_64" -O playit; then
+              echo "✅ Download successful on attempt $i"
+              break
+            fi
+            sleep 5
+          done
           
-          # Verify download
-          if [ ! -s "playit" ]; then
-            echo "❌ Download failed - file is empty"
+          # Method 2: If wget fails, try curl
+          if [ ! -f "playit" ] || [ ! -s "playit" ]; then
+            echo "🔄 Trying with curl..."
+            for i in {1..3}; do
+              if curl -L -A "Mozilla/5.0" --retry 3 --connect-timeout 30 \
+                 "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-x86_64" -o playit; then
+                echo "✅ Download successful with curl"
+                break
+              fi
+              sleep 5
+            done
+          fi
+          
+          # Method 3: If still failing, try different version
+          if [ ! -f "playit" ] || [ ! -s "playit" ]; then
+            echo "🔄 Trying alternative version..."
+            curl -L -A "Mozilla/5.0" \
+              "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.13/playit-linux-x86_64" -o playit || true
+          fi
+          
+          # Final check
+          if [ ! -f "playit" ] || [ ! -s "playit" ]; then
+            echo "❌ ALL DOWNLOAD METHODS FAILED"
+            echo "💡 Alternative: Use the manual download method below"
+            echo "📋 Manual workaround:"
+            echo "1. Go to: https://github.com/playit-cloud/playit-agent/releases"
+            echo "2. Download playit-linux-x86_64 manually"
+            echo "3. Upload to GitHub repository"
+            echo "4. Update workflow to use local file"
             exit 1
           fi
           
@@ -85,13 +119,13 @@ jobs:
           sudo mv playit /usr/local/bin/
           echo "✅ Playit installed"
 
-          # Start tunnel (MATCHING WINDOWS APPROACH)
+          # Start tunnel
           echo "🚀 Starting tunnel..."
           /usr/local/bin/playit --secret "$PLAYIT_KEY" --tunnel 3390 2>&1 | tee playit.log &
           TUNNEL_PID=$!
           
-          # Wait for tunnel to establish (longer wait)
-          echo "⏳ Waiting for tunnel to establish (up to 60 seconds)..."
+          # Wait for tunnel to establish
+          echo "⏳ Waiting for tunnel to establish..."
           for i in {1..60}; do
             if grep -q "https://" playit.log; then
               echo "✅ Tunnel established!"
@@ -100,7 +134,7 @@ jobs:
             sleep 1
           done
           
-          # Extract address (MATCHING WINDOWS PATTERN)
+          # Extract address
           ADDRESS=$(grep -oP 'https://\K[\w\-\.]+\.ply\.gg:\d+' playit.log | head -1)
           
           if [ -n "$ADDRESS" ]; then
@@ -108,24 +142,18 @@ jobs:
             echo ">>> RDP ADDRESS: $ADDRESS <<<"
             echo "Username: kali"
             echo "Password: kali123456"
-            echo ""
-            echo "📱 In Windows RDP app on your phone:"
-            echo "Computer: $(echo $ADDRESS | cut -d: -f1)"
-            echo "Port: $(echo $ADDRESS | cut -d: -f2)"
           else
-            echo "❌ No tunnel URL found in log"
-            echo "📋 Checking log content:"
+            echo "❌ No tunnel URL found"
+            echo "📋 Log contents:"
             cat playit.log
-            echo "🔄 Continuing anyway - tunnel might still work..."
+            echo "🔄 Continuing - tunnel might still work..."
           fi
 
       - name: Keep Alive with Countdown
         run: |
           DURATION=${{ github.event.inputs.duration || 180 }}
           echo "🕐 RDP session active for $DURATION minutes"
-          echo "🔧 Tools available: nmap, sqlmap, ffuf, gobuster, wireshark, john, hashcat, etc."
-          echo ""
-          echo "💡 Remember to connect using the RDP address shown above!"
+          echo "🔧 Tools available: nmap, sqlmap, ffuf, gobuster, etc."
           
           MINUTES=$DURATION
           for ((i=MINUTES; i>0; i--)); do
