@@ -31,15 +31,15 @@ jobs:
             xfce4 xfce4-goodies \
             xrdp \
             firefox \
-            nano vim curl wget unzip git ruby ruby-dev
+            nano vim curl wget unzip git
 
-          # Install security tools that ARE available
+          # Install security tools that WORK
           echo "🛠️ Installing security tools..."
           sudo apt-get install -y \
             nmap nikto sqlmap gobuster dirb ffuf \
             python3 python3-pip python3-venv \
             john hashcat hydra wireshark tcpdump \
-            netcat-openbsd  # FIXED: Use specific netcat package
+            netcat-openbsd
 
           # Create user
           sudo useradd -m -s /bin/bash kali 2>/dev/null || true
@@ -56,17 +56,6 @@ jobs:
           sudo systemctl start xrdp
 
           echo "✅ Desktop environment ready!"
-
-      - name: Install Metasploit
-        run: |
-          echo "📥 Installing Metasploit..."
-          # Install dependencies
-          sudo apt-get install -y build-essential libpq-dev postgresql
-          
-          # Download and install Metasploit
-          wget -q https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb
-          sudo ruby msfupdate.erb
-          echo "✅ Metasploit installed"
 
       - name: Install Feroxbuster
         run: |
@@ -86,10 +75,10 @@ jobs:
           echo "🔍 Verifying installed tools..."
           which nmap && echo "✅ nmap"
           which sqlmap && echo "✅ sqlmap" 
-          which msfconsole && echo "✅ metasploit"
           which feroxbuster && echo "✅ feroxbuster"
           which nc && echo "✅ netcat"
           echo "✅ All critical tools installed!"
+          echo "⚠️ Metasploit skipped due to installation issues"
 
       - name: Setup Playit Tunnel (RDP Access)
         env:
@@ -104,6 +93,26 @@ jobs:
           nohup playit --secret "$PLAYIT_KEY" --tunnel 3390 > playit.log 2>&1 &
           sleep 25
 
+          TUNNEL_URL=$(grep -o 'https://[^ ]*\.ply\.gg' playit.log | head -1)
+          echo "🎯 RDP Connection Details:" 
+          echo "Address: $TUNNEL_URL"
+          echo "Port: 3390"
+          echo "Username: kali"
+          echo "Password: kali123456"
+          echo "📱 Use Windows RDP app on your phone to connect!"
+
+      - name: Keep Alive with Countdown
+        run: |
+          DURATION=${{ github.event.inputs.duration || 180 }}
+          echo "🕐 RDP session active for $DURATION minutes"
+          echo "🔧 Tools available: nmap, sqlmap, feroxbuster, wireshark, john, hashcat, etc."
+          
+          MINUTES=$DURATION
+          for ((i=MINUTES; i>0; i--)); do
+            echo "⏳ Time remaining: ${i} minutes"
+            sleep 60
+          done
+          echo "❌ Session ending now"
           TUNNEL_URL=$(grep -o 'https://[^ ]*\.ply\.gg' playit.log | head -1)
           echo "🎯 RDP Connection Details:" 
           echo "Address: $TUNNEL_URL"
