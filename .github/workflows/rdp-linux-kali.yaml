@@ -1,0 +1,79 @@
+
+name: Kali-RDP-Mobile
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: 'Runtime in minutes (max 360)'
+        required: false
+        default: '180'
+
+jobs:
+  kali-rdp:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ github.event.inputs.duration || 180 }}
+
+    steps:
+      - name: Setup Kali Desktop Environment
+        run: |
+          set -e
+          # Update and install base system
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            kali-linux-headless \
+            xfce4 xfce4-goodies \
+            xrdp \
+            firefox-esr \
+            nano vim
+
+          # Create user with secure password
+          sudo useradd -m -s /bin/bash kali 2>/dev/null || true
+          echo "kali:kali123456" | sudo chpasswd
+          sudo usermod -aG sudo kali
+
+          # Configure xrdp for mobile-friendly resolution
+          sudo sed -i 's/port=3389/port=3390/g' /etc/xrdp/xrdp.ini
+          echo "xfce4-session" | sudo tee /etc/xrdp/startwm.sh
+          sudo chmod +x /etc/xrdp/startwm.sh
+
+          # Start RDP service
+          sudo systemctl enable xrdp
+          sudo systemctl start xrdp
+
+      - name: Setup Playit Tunnel (RDP Access)
+        env:
+          PLAYIT_KEY: ${{ secrets.PLAYIT_KEY }}
+        run: |
+          # Download and setup playit
+          wget -q https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-x86_64-v0.15.26.tar.gz
+          tar -xzf playit-linux-x86_64-v0.15.26.tar.gz
+          sudo mv playit /usr/local/bin/
+          sudo chmod +x /usr/local/bin/playit
+
+          # Start tunnel in background
+          nohup playit --secret "$PLAYIT_KEY" --tunnel 3390 > playit.log 2>&1 &
+          sleep 10
+
+          # Get connection details
+          TUNNEL_URL=$(grep -o 'https://[^ ]*\.ply\.gg' playit.log | head -1)
+          echo "🎯 RDP Connection Details:" 
+          echo "Address: $TUNNEL_URL"
+          echo "Port: 3390"
+          echo "Username: kali"
+          echo "Password: kali123456"
+          echo "📱 Use Windows RDP app on your phone to connect!"
+
+      - name: Keep Alive with Countdown
+        run: |
+          echo "🕐 RDP session active for ${{ github.event.inputs.duration || 180 }} minutes"
+          echo "⏰ Session started at: $(date)"
+          echo "🔌 Will auto-terminate at: $(date -d '+${{ github.event.inputs.duration || 180 }} minutes')"
+          
+          # Countdown timer
+          MINUTES=$(( ${{ github.event.inputs.duration || 180 }} ))
+          for ((i=MINUTES; i>0; i--)); do
+            echo "⏳ Time remaining: ${i} minutes"
+            sleep 60
+          done
+          echo "❌ Session ending now"
