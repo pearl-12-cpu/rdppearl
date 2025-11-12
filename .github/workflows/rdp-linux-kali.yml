@@ -1,5 +1,5 @@
 
-name: Kali-RDP
+name: Kali-RDP-Mobile-Working
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Checkout repository (includes manual playit binary)
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Ubuntu Desktop with Security Tools
@@ -62,62 +62,108 @@ jobs:
           pip3 install requests bs4 scrapy
           echo "✅ Python tools installed"
 
-      - name: Download OLD Playit Version (v0.15.26 - PROVEN WORKING)
+      - name: Download Playit with Multiple Methods
         run: |
-          echo "📥 Downloading playit v0.15.26 (compatible with your secret)..."
-          # Download the version that matches your existing agents
-          wget -q "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-x86_64" -O playit
-          chmod +x playit
-          sudo mv playit /usr/local/bin/
-          echo "✅ Playit v0.15.26 installed"
-
-      - name: Setup Playit Tunnel (USING OLD VERSION WITH TUNNEL ARG)
-        env:
-          PLAYIT_KEY: ${{ secrets.PL }}    # USING YOUR EXISTING SECRET
-        run: |
-          echo "🌐 Setting up Playit tunnel with v0.15.26..."
+          echo "📥 Attempting to download playit..."
           
-          # Start tunnel with --tunnel argument (supported in v0.15.26)
-          echo "🚀 Starting tunnel on port 3390..."
+          # Method 1: Try different URL patterns
+          URLS=(
+            "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-amd64"
+            "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-x86_64"
+            "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.13/playit-linux-amd64"
+            "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.13/playit-linux-x86_64"
+          )
+          
+          for url in "${URLS[@]}"; do
+            echo "Trying: $url"
+            if wget -q "$url" -O playit && [ -s "playit" ]; then
+              echo "✅ Download successful from: $url"
+              break
+            fi
+            sleep 2
+          done
+          
+          # Final check
+          if [ ! -s "playit" ]; then
+            echo "❌ All direct downloads failed, using fallback method..."
+            # Fallback: Use curl with different approach
+            curl -L -H "Accept: application/octet-stream" \
+              "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-amd64" \
+              -o playit || true
+          fi
+          
+          if [ -s "playit" ]; then
+            chmod +x playit
+            sudo mv playit /usr/local/bin/
+            echo "✅ Playit installed successfully"
+          else
+            echo "❌ CRITICAL: Cannot download playit - GitHub is blocking downloads"
+            echo "💡 Alternative: Use the manual binary you already uploaded"
+            echo "📁 Using existing binary from binaries/ folder..."
+            cp ./binaries/playit ./playit 2>/dev/null || {
+              echo "❌ No manual binary found either"
+              exit 1
+            }
+            chmod +x playit
+            sudo mv playit /usr/local/bin/
+            echo "✅ Using manually uploaded playit binary"
+          fi
+
+      - name: Setup Playit Tunnel
+        env:
+          PLAYIT_KEY: ${{ secrets.PL }}
+        run: |
+          echo "🌐 Setting up Playit tunnel..."
+          
+          # Try both syntaxes (with and without --tunnel)
+          echo "🚀 Attempting to start tunnel..."
+          
+          # Method 1: Try with --tunnel (older versions)
           /usr/local/bin/playit --secret "$PLAYIT_KEY" --tunnel 3390 2>&1 | tee playit.log &
           TUNNEL_PID=$!
+          sleep 10
           
-          # Wait for tunnel to establish
-          echo "⏳ Waiting for tunnel to establish..."
+          # Check if Method 1 worked
+          if grep -q "unexpected argument" playit.log; then
+            echo "🔄 Older syntax failed, trying new syntax..."
+            # Method 2: Try without --tunnel (newer versions)
+            kill $TUNNEL_PID 2>/dev/null || true
+            sleep 2
+            /usr/local/bin/playit --secret "$PLAYIT_KEY" 2>&1 | tee playit.log &
+            TUNNEL_PID=$!
+          fi
+          
+          # Wait for tunnel
+          echo "⏳ Waiting for tunnel..."
           for i in {1..60}; do
-            if grep -q "https://" playit.log; then
-              echo "✅ Tunnel established after $i seconds!"
+            if grep -q "https://" playit.log || grep -q "agent_id" playit.log || grep -q "connected" playit.log; then
+              echo "✅ Tunnel active after $i seconds!"
               break
             fi
             sleep 1
           done
           
-          # Extract connection details
+          # Get connection info
           ADDRESS=$(grep -oP 'https://\K[\w\-\.]+\.ply\.gg:\d+' playit.log | head -1)
           
           if [ -n "$ADDRESS" ]; then
             echo ""
-            echo "🎯 🎯 🎯 RDP CONNECTION DETAILS 🎯 🎯 🎯"
-            echo ">>> RDP ADDRESS: $ADDRESS <<<"
+            echo "🎯 RDP CONNECTION DETAILS:"
+            echo ">>> $ADDRESS <<<"
             echo "Username: kali"
             echo "Password: kali123456"
-            echo ""
-            echo "📱 In Windows RDP app:"
-            echo "Computer: $(echo $ADDRESS | cut -d: -f1)"
-            echo "Port: $(echo $ADDRESS | cut -d: -f2)"
-            echo "🎯 🎯 🎯"
           else
-            echo "❌ No tunnel URL found"
-            echo "📋 Checking log..."
+            echo "📋 Tunnel log:"
             tail -20 playit.log
             echo "💡 Check https://playit.gg/account/tunnels for your RDP address"
+            echo "👤 Username: kali"
+            echo "🔑 Password: kali123456"
           fi
 
       - name: Keep Alive with Countdown
         run: |
           DURATION=${{ github.event.inputs.duration || 180 }}
           echo "🕐 RDP session active for $DURATION minutes"
-          echo "🔧 Tools available: nmap, sqlmap, ffuf, gobuster, etc."
           
           MINUTES=$DURATION
           for ((i=MINUTES; i>0; i--)); do
