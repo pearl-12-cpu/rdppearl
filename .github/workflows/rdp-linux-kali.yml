@@ -62,57 +62,32 @@ jobs:
           pip3 install requests bs4 scrapy
           echo "✅ Python tools installed"
 
-      - name: Setup Playit Tunnel (PROXY DOWNLOAD METHOD)
+      - name: Setup Playit Tunnel (CORRECTED URL)
         env:
           PLAYIT_KEY: ${{ secrets.PLAYIT_KEY }}
         run: |
-          echo "🌐 Setting up Playit tunnel with proxy download..."
+          echo "🌐 Setting up Playit tunnel..."
           
-          # Method 1: Try with different user agent and retries
-          echo "📥 Attempting download with retries..."
-          for i in {1..5}; do
-            echo "Attempt $i..."
-            if wget --timeout=30 --tries=3 --user-agent="Mozilla/5.0" \
-               "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-x86_64" -O playit; then
-              echo "✅ Download successful on attempt $i"
-              break
-            fi
-            sleep 5
-          done
+          # CORRECT URL (using dots, not underscores, and correct spelling)
+          PLAYIT_URL="https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-x86_64"
+          echo "📥 Downloading from: $PLAYIT_URL"
           
-          # Method 2: If wget fails, try curl
-          if [ ! -f "playit" ] || [ ! -s "playit" ]; then
-            echo "🔄 Trying with curl..."
-            for i in {1..3}; do
-              if curl -L -A "Mozilla/5.0" --retry 3 --connect-timeout 30 \
-                 "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-x86_64" -o playit; then
-                echo "✅ Download successful with curl"
-                break
-              fi
-              sleep 5
-            done
+          # Download with verification
+          if ! wget -q "$PLAYIT_URL" -O playit; then
+            echo "❌ wget failed, trying curl..."
+            curl -L "$PLAYIT_URL" -o playit
           fi
           
-          # Method 3: If still failing, try different version
-          if [ ! -f "playit" ] || [ ! -s "playit" ]; then
-            echo "🔄 Trying alternative version..."
-            curl -L -A "Mozilla/5.0" \
-              "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.13/playit-linux-x86_64" -o playit || true
-          fi
-          
-          # Final check
-          if [ ! -f "playit" ] || [ ! -s "playit" ]; then
-            echo "❌ ALL DOWNLOAD METHODS FAILED"
-            echo "💡 Alternative: Use the manual download method below"
-            echo "📋 Manual workaround:"
-            echo "1. Go to: https://github.com/playit-cloud/playit-agent/releases"
-            echo "2. Download playit-linux-x86_64 manually"
-            echo "3. Upload to GitHub repository"
-            echo "4. Update workflow to use local file"
+          # VERIFY the download is actually a binary (not HTML error page)
+          file playit | grep -q "ELF" || {
+            echo "❌ Downloaded file is not a binary - it's probably an HTML error page"
+            echo "📋 File type: $(file playit)"
+            echo "📋 First few bytes: $(head -c 100 playit)"
             exit 1
-          fi
+          }
           
-          echo "✅ Download successful - file size: $(wc -c < playit) bytes"
+          echo "✅ Download verified - it's a real binary"
+          echo "📏 File size: $(wc -c < playit) bytes"
           
           # Make executable and install
           chmod +x playit
@@ -125,34 +100,56 @@ jobs:
           TUNNEL_PID=$!
           
           # Wait for tunnel to establish
-          echo "⏳ Waiting for tunnel to establish..."
-          for i in {1..60}; do
-            if grep -q "https://" playit.log; then
+          echo "⏳ Waiting for tunnel to establish (this can take 30-60 seconds)..."
+          for i in {1..90}; do
+            if grep -q "https://.*\.ply\.gg" playit.log; then
               echo "✅ Tunnel established!"
               break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "⏰ Still waiting... (30 seconds passed)"
+            fi
+            if [ $i -eq 60 ]; then
+              echo "⏰ Still waiting... (60 seconds passed)"
             fi
             sleep 1
           done
           
-          # Extract address
+          # Extract address with multiple pattern attempts
           ADDRESS=$(grep -oP 'https://\K[\w\-\.]+\.ply\.gg:\d+' playit.log | head -1)
+          if [ -z "$ADDRESS" ]; then
+            ADDRESS=$(grep -o 'tunnel started at: https://[^ ]*' playit.log | cut -d' ' -f4 | cut -d'/' -f3)
+          fi
+          if [ -z "$ADDRESS" ]; then
+            ADDRESS=$(grep -o 'https://[a-zA-Z0-9.-]*\.ply\.gg:[0-9]*' playit.log | head -1 | cut -d'/' -f3)
+          fi
           
           if [ -n "$ADDRESS" ]; then
-            echo "🎯 RDP Connection Details:" 
+            echo ""
+            echo "🎯 🎯 🎯 RDP CONNECTION DETAILS 🎯 🎯 🎯"
             echo ">>> RDP ADDRESS: $ADDRESS <<<"
             echo "Username: kali"
             echo "Password: kali123456"
+            echo ""
+            echo "📱 In Windows RDP app:"
+            echo "Computer: $(echo $ADDRESS | cut -d: -f1)"
+            echo "Port: $(echo $ADDRESS | cut -d: -f2)"
+            echo "🎯 🎯 🎯"
           else
-            echo "❌ No tunnel URL found"
-            echo "📋 Log contents:"
-            cat playit.log
-            echo "🔄 Continuing - tunnel might still work..."
+            echo "❌ No tunnel URL found after 90 seconds"
+            echo "📋 Checking log for errors:"
+            grep -i "error\|fail\|warn" playit.log || echo "No obvious errors in log"
+            echo "📋 Recent log:"
+            tail -20 playit.log
+            echo "❌ Tunnel failed - cannot provide connection details"
+            exit 1
           fi
 
       - name: Keep Alive with Countdown
         run: |
           DURATION=${{ github.event.inputs.duration || 180 }}
           echo "🕐 RDP session active for $DURATION minutes"
+          echo "💡 If connection details above didn't show, the tunnel failed"
           echo "🔧 Tools available: nmap, sqlmap, ffuf, gobuster, etc."
           
           MINUTES=$DURATION
