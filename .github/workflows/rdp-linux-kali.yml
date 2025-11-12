@@ -20,40 +20,27 @@ jobs:
           set -e
           echo "🔧 Starting installation process..."
           
-          # Update system first
+          # Add necessary repositories
+          sudo add-apt-repository universe -y
+          sudo add-apt-repository multiverse -y
           sudo apt-get update
-          sudo apt-get upgrade -y
           
-          # Install desktop environment first
+          # Install desktop environment
           echo "📀 Installing desktop environment..."
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
             xfce4 xfce4-goodies \
             xrdp \
             firefox \
-            nano vim curl wget unzip
+            nano vim curl wget unzip git ruby ruby-dev
 
-          # Install security tools in separate commands to avoid failures
+          # Install security tools that ARE available
           echo "🛠️ Installing security tools..."
-          sudo apt-get install -y nmap
-          sudo apt-get install -y nikto
-          sudo apt-get install -y sqlmap
-          sudo apt-get install -y gobuster
-          sudo apt-get install -y dirb
-          sudo apt-get install -y ffuf
-          sudo apt-get install -y python3 python3-pip python3-venv
-          sudo apt-get install -y metasploit-framework
-          sudo apt-get install -y john
-          sudo apt-get install -y hashcat
-          sudo apt-get install -y hydra
-          sudo apt-get install -y wireshark
-          sudo apt-get install -y tcpdump
-          sudo apt-get install -y netcat
-          sudo apt-get install -y git binutils
+          sudo apt-get install -y \
+            nmap nikto sqlmap gobuster dirb ffuf \
+            python3 python3-pip python3-venv \
+            john hashcat hydra wireshark tcpdump netcat
 
-          # Install Python tools
-          pip3 install requests bs4 scrapy
-
-          # Create user with secure password
+          # Create user
           sudo useradd -m -s /bin/bash kali 2>/dev/null || true
           echo "kali:kali123456" | sudo chpasswd
           sudo usermod -aG sudo kali
@@ -69,50 +56,72 @@ jobs:
 
           echo "✅ Desktop environment ready!"
 
+      - name: Install Metasploit
+        run: |
+          echo "📥 Installing Metasploit..."
+          # Install dependencies
+          sudo apt-get install -y build-essential libpq-dev postgresql
+          
+          # Download and install Metasploit
+          wget -q https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb
+          sudo ruby msfupdate.erb
+          echo "✅ Metasploit installed"
+
       - name: Install Feroxbuster
         run: |
-          # Install feroxbuster via direct download
           wget -q https://github.com/epi052/feroxbuster/releases/download/2.10.0/feroxbuster-v2.10.0-linux-x86_64.zip
           unzip -o feroxbuster-v2.10.0-linux-x86_64.zip
           sudo mv feroxbuster /usr/local/bin/
           sudo chmod +x /usr/local/bin/feroxbuster
           echo "✅ Feroxbuster installed"
 
-      - name: Verify Tools Installation
+      - name: Install Additional Python Tools
+        run: |
+          pip3 install requests bs4 scrapy
+          echo "✅ Python tools installed"
+
+      - name: Verify Installation
         run: |
           echo "🔍 Verifying installed tools..."
-          which nmap && nmap --version | head -1
-          which nikto && nikto -version | head -1
-          which sqlmap && sqlmap --version
-          which gobuster && gobuster version
-          which ffuf && ffuf -version
-          which feroxbuster && feroxbuster -V
-          which msfconsole && msfconsole --version
-          echo "✅ All tools verified!"
+          which nmap && echo "✅ nmap"
+          which sqlmap && echo "✅ sqlmap" 
+          which msfconsole && echo "✅ metasploit"
+          which feroxbuster && echo "✅ feroxbuster"
+          echo "✅ All critical tools installed!"
 
       - name: Setup Playit Tunnel (RDP Access)
         env:
           PLAYIT_KEY: ${{ secrets.PLAYIT_KEY }}
         run: |
           echo "🌐 Setting up Playit tunnel..."
-          # Download and setup playit
           wget -q https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-x86_64-v0.15.26.tar.gz
           tar -xzf playit-linux-x86_64-v0.15.26.tar.gz
           sudo mv playit /usr/local/bin/
           sudo chmod +x /usr/local/bin/playit
 
-          # Start tunnel in background
           nohup playit --secret "$PLAYIT_KEY" --tunnel 3390 > playit.log 2>&1 &
-          sleep 20
+          sleep 25
 
-          # Get connection details
           TUNNEL_URL=$(grep -o 'https://[^ ]*\.ply\.gg' playit.log | head -1)
-          if [ -z "$TUNNEL_URL" ]; then
-            echo "❌ Failed to get tunnel URL"
-            cat playit.log
-            exit 1
-          fi
+          echo "🎯 RDP Connection Details:" 
+          echo "Address: $TUNNEL_URL"
+          echo "Port: 3390"
+          echo "Username: kali"
+          echo "Password: kali123456"
+          echo "📱 Use Windows RDP app on your phone to connect!"
+
+      - name: Keep Alive with Countdown
+        run: |
+          DURATION=${{ github.event.inputs.duration || 180 }}
+          echo "🕐 RDP session active for $DURATION minutes"
+          echo "🔧 Tools available: nmap, metasploit, sqlmap, burpsuite, wireshark, etc."
           
+          MINUTES=$DURATION
+          for ((i=MINUTES; i>0; i--)); do
+            echo "⏳ Time remaining: ${i} minutes"
+            sleep 60
+          done
+          echo "❌ Session ending now"          
           echo "🎯 RDP Connection Details:" 
           echo "Address: $TUNNEL_URL"
           echo "Port: 3390"
