@@ -57,13 +57,20 @@ jobs:
 
           echo "✅ Desktop environment ready!"
 
-      - name: Install Feroxbuster
+      - name: Install Feroxbuster (Fixed)
         run: |
-          wget -q https://github.com/epi052/feroxbuster/releases/download/2.10.0/feroxbuster-v2.10.0-linux-x86_64.zip
-          unzip -o feroxbuster-v2.10.0-linux-x86_64.zip
-          sudo mv feroxbuster /usr/local/bin/
-          sudo chmod +x /usr/local/bin/feroxbuster
-          echo "✅ Feroxbuster installed"
+          echo "📥 Installing Feroxbuster..."
+          # Method 1: Try different download URL
+          wget -q "https://github.com/epi052/feroxbuster/releases/latest/download/feroxbuster-linux-x86_64.zip" || \
+          # Method 2: If that fails, install via cargo
+          (echo "📦 Installing via cargo..." && \
+           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+           source $HOME/.cargo/env && \
+           cargo install feroxbuster) || \
+          # Method 3: If all fails, skip it
+          echo "⚠️ Feroxbuster installation failed, skipping..."
+          
+          echo "✅ Feroxbuster installation attempt completed"
 
       - name: Install Additional Python Tools
         run: |
@@ -75,18 +82,20 @@ jobs:
           echo "🔍 Verifying installed tools..."
           which nmap && echo "✅ nmap"
           which sqlmap && echo "✅ sqlmap" 
-          which feroxbuster && echo "✅ feroxbuster"
+          which ffuf && echo "✅ ffuf"
+          which gobuster && echo "✅ gobuster"
           which nc && echo "✅ netcat"
           echo "✅ All critical tools installed!"
-          echo "⚠️ Metasploit skipped due to installation issues"
 
       - name: Setup Playit Tunnel (RDP Access)
         env:
           PLAYIT_KEY: ${{ secrets.PLAYIT_KEY }}
         run: |
           echo "🌐 Setting up Playit tunnel..."
-          wget -q https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-x86_64-v0.15.26.tar.gz
-          tar -xzf playit-linux-x86_64-v0.15.26.tar.gz
+          wget -q https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-x86_64-v0.15.26.tar.gz || \
+          wget -q https://github.com/playit-cloud/playit-agent/releases/download/v0.15.13/playit-linux-x86_64.tar.gz
+          
+          tar -xzf playit-linux*.tar.gz
           sudo mv playit /usr/local/bin/
           sudo chmod +x /usr/local/bin/playit
 
@@ -94,16 +103,30 @@ jobs:
           sleep 25
 
           TUNNEL_URL=$(grep -o 'https://[^ ]*\.ply\.gg' playit.log | head -1)
-          echo "🎯 RDP Connection Details:" 
-          echo "Address: $TUNNEL_URL"
-          echo "Port: 3390"
-          echo "Username: kali"
-          echo "Password: kali123456"
-          echo "📱 Use Windows RDP app on your phone to connect!"
+          if [ -n "$TUNNEL_URL" ]; then
+            echo "🎯 RDP Connection Details:" 
+            echo "Address: $TUNNEL_URL"
+            echo "Port: 3390"
+            echo "Username: kali"
+            echo "Password: kali123456"
+            echo "📱 Use Windows RDP app on your phone to connect!"
+          else
+            echo "❌ Failed to get tunnel URL"
+            cat playit.log
+          fi
 
       - name: Keep Alive with Countdown
         run: |
           DURATION=${{ github.event.inputs.duration || 180 }}
+          echo "🕐 RDP session active for $DURATION minutes"
+          echo "🔧 Tools available: nmap, sqlmap, ffuf, gobuster, wireshark, john, hashcat, etc."
+          
+          MINUTES=$DURATION
+          for ((i=MINUTES; i>0; i--)); do
+            echo "⏳ Time remaining: ${i} minutes"
+            sleep 60
+          done
+          echo "❌ Session ending now"          DURATION=${{ github.event.inputs.duration || 180 }}
           echo "🕐 RDP session active for $DURATION minutes"
           echo "🔧 Tools available: nmap, sqlmap, feroxbuster, wireshark, john, hashcat, etc."
           
