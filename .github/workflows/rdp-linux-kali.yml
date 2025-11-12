@@ -12,27 +12,33 @@ on:
 jobs:
   kali-rdp:
     runs-on: ubuntu-latest
-    timeout-minutes: 360  # Fixed value - maximum allowed
+    timeout-minutes: 360
 
     steps:
-      - name: Setup Kali Desktop Environment
+      - name: Setup Ubuntu Desktop with Security Tools
         run: |
           set -e
           # Update and install base system
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            kali-linux-headless \
             xfce4 xfce4-goodies \
             xrdp \
-            firefox-esr \
-            nano vim
+            firefox \
+            nano vim curl wget \
+            # Security tools
+            nmap nikto sqlmap gobuster dirb ffuf \
+            python3 python3-pip python3-venv \
+            metasploit-framework
+
+          # Install additional tools via pip
+          pip3 install requests bs4 scrapy
 
           # Create user with secure password
           sudo useradd -m -s /bin/bash kali 2>/dev/null || true
           echo "kali:kali123456" | sudo chpasswd
           sudo usermod -aG sudo kali
 
-          # Configure xrdp for mobile-friendly resolution
+          # Configure xrdp
           sudo sed -i 's/port=3389/port=3390/g' /etc/xrdp/xrdp.ini
           echo "xfce4-session" | sudo tee /etc/xrdp/startwm.sh
           sudo chmod +x /etc/xrdp/startwm.sh
@@ -40,6 +46,8 @@ jobs:
           # Start RDP service
           sudo systemctl enable xrdp
           sudo systemctl start xrdp
+
+          echo "✅ Desktop environment ready!"
 
       - name: Setup Playit Tunnel (RDP Access)
         env:
@@ -53,7 +61,7 @@ jobs:
 
           # Start tunnel in background
           nohup playit --secret "$PLAYIT_KEY" --tunnel 3390 > playit.log 2>&1 &
-          sleep 10
+          sleep 15
 
           # Get connection details
           TUNNEL_URL=$(grep -o 'https://[^ ]*\.ply\.gg' playit.log | head -1)
@@ -63,6 +71,20 @@ jobs:
           echo "Username: kali"
           echo "Password: kali123456"
           echo "📱 Use Windows RDP app on your phone to connect!"
+
+      - name: Install Additional Kali Tools (Optional)
+        run: |
+          # Install tools that are available on Ubuntu
+          sudo apt-get install -y \
+            john hashcat hydra wireshark tcpdump \
+            netcat-openbsd netcat-traditional \
+            git binutils
+
+          # Install feroxbuster via cargo or download binary
+          wget -q https://github.com/epi052/feroxbuster/releases/download/2.10.0/feroxbuster-v2.10.0-linux-x86_64.zip
+          unzip feroxbuster-v2.10.0-linux-x86_64.zip
+          sudo mv feroxbuster /usr/local/bin/
+          sudo chmod +x /usr/local/bin/feroxbuster
 
       - name: Keep Alive with Countdown
         run: |
