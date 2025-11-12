@@ -62,42 +62,63 @@ jobs:
           pip3 install requests bs4 scrapy
           echo "✅ Python tools installed"
 
-      - name: Setup Ngrok Tunnel (RELIABLE RDP Access)
+      - name: Setup Playit Tunnel (WORKING METHOD)
         env:
-          NGROK_TOKEN: ${{ secrets.NGROK_TOKEN }}
+          PLAYIT_KEY: ${{ secrets.PLAYIT_KEY }}
         run: |
-          echo "🌐 Setting up Ngrok tunnel (more reliable than Playit)..."
+          echo "🌐 Setting up Playit tunnel..."
           
-          # Download and install ngrok
-          wget -q https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz
-          tar -xzf ngrok-v3-stable-linux-amd64.tgz
-          chmod +x ngrok
+          # Download playit - WORKING METHOD
+          echo "📥 Downloading playit..."
+          curl -L -o playit.tar.gz "https://github.com/playit-cloud/playit-agent/releases/download/v0.9.3/playit-0.9.3-x86_64-linux.tar.gz" ||
+          curl -L -o playit.tar.gz "https://github.com/playit-cloud/playit-agent/releases/download/v0.9.0/playit-linux-x86_64.tar.gz" ||
+          (echo "❌ Failed to download playit" && exit 1)
           
-          # Authenticate ngrok
-          ./ngrok config add-authtoken "$NGROK_TOKEN"
+          # Extract and install
+          tar -xzf playit.tar.gz
+          sudo mv playit /usr/local/bin/
+          sudo chmod +x /usr/local/bin/playit
+          echo "✅ Playit installed successfully"
+
+          # Start tunnel
+          echo "🚀 Starting tunnel..."
+          nohup playit --secret "$PLAYIT_KEY" --tunnel 3390 > playit.log 2>&1 &
           
-          # Start ngrok tunnel for RDP
-          ./ngrok tcp 3390 --log=stdout > ngrok.log 2>&1 &
+          # Wait longer and check multiple times
           echo "⏳ Waiting for tunnel to establish..."
-          sleep 10
+          for i in {1..60}; do
+            if grep -q "https://" playit.log; then
+              break
+            fi
+            sleep 2
+          done
           
-          # Get the public URL
-          NGROK_URL=$(curl -s http://localhost:4040/api/tunnels | grep -o 'tcp://[^"]*\.ngrok.io:[0-9]*' | head -1)
+          # Get connection details with multiple pattern attempts
+          TUNNEL_URL=$(grep -oE 'https://[a-zA-Z0-9.-]+\.ply\.gg:[0-9]+' playit.log | head -1)
+          if [ -z "$TUNNEL_URL" ]; then
+            TUNNEL_URL=$(grep -oE 'tunnel started at: https://[^ ]+' playit.log | cut -d' ' -f4)
+          fi
+          if [ -z "$TUNNEL_URL" ]; then
+            TUNNEL_URL=$(grep -oE 'https://[^ ]*\.playit\.gg[^ ]*' playit.log | head -1)
+          fi
           
-          if [ -n "$NGROK_URL" ]; then
+          if [ -n "$TUNNEL_URL" ]; then
             echo "🎯 RDP Connection Details:" 
-            echo "Address: $NGROK_URL"
+            echo "Address: $(echo $TUNNEL_URL | cut -d'/' -f3 | cut -d: -f1)"
+            echo "Port: $(echo $TUNNEL_URL | cut -d: -f3)"
+            echo "Full URL: $TUNNEL_URL"
             echo "Username: kali"
             echo "Password: kali123456"
             echo "📱 Use Windows RDP app on your phone to connect!"
-            echo ""
-            echo "🔗 In your RDP app, use: $(echo $NGROK_URL | sed 's/tcp:\/\///' | cut -d: -f1)"
-            echo "🔢 Port: $(echo $NGROK_URL | cut -d: -f3)"
+            
+            # Also show the log for debugging
+            echo "📋 Recent tunnel log:"
+            tail -20 playit.log
           else
-            echo "❌ Failed to get Ngrok URL"
-            echo "📋 Ngrok log:"
-            cat ngrok.log
-            exit 1
+            echo "❌ Failed to get tunnel URL"
+            echo "📋 Full tunnel log:"
+            cat playit.log
+            echo "🔄 Trying to continue anyway - tunnel might still work..."
           fi
 
       - name: Keep Alive with Countdown
@@ -106,7 +127,8 @@ jobs:
           echo "🕐 RDP session active for $DURATION minutes"
           echo "🔧 Tools available: nmap, sqlmap, ffuf, gobuster, wireshark, john, hashcat, etc."
           echo ""
-          echo "💡 The RDP tunnel is active! Connect from your phone now."
+          echo "💡 If connection details didn't show above, check the playit.log file in the workspace"
+          echo "💡 You can also try checking https://playit.gg/account/tunnels for active tunnels"
           
           MINUTES=$DURATION
           for ((i=MINUTES; i>0; i--)); do
