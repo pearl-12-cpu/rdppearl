@@ -40,12 +40,12 @@ jobs:
           sudo systemctl enable xrdp
           sudo systemctl start xrdp
 
-          # 5.  play-it static binary (pinned, working release)
-          curl -L -o /tmp/playit.tar.gz \
-            https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-x86_64-v0.15.26.tar.gz
-          # quick integrity check
+          # 5.  play-it static binary (pinned, verified)
+          PLAYIT_URL="https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-x86_64-v0.15.26.tar.gz"
+          curl -fL -H "Accept: application/octet-stream" "$PLAYIT_URL" -o /tmp/playit.tar.gz
+          # verify it’s actually gzip
           file /tmp/playit.tar.gz | grep -q "gzip compressed" || {
-            echo "Download is not a gzip file"; exit 1; }
+            echo "Download corrupted or not gzip"; exit 1; }
           tar -xzf /tmp/playit.tar.gz -C /tmp
           sudo mv /tmp/playit /usr/local/bin/
           sudo chmod +x /usr/local/bin/playit
