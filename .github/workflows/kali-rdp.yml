@@ -1,72 +1,21 @@
 
-name: Kali-Ubuntu-RDP
+name: Kali Docker RDP
 
-on:
-  workflow_dispatch:
-    inputs:
-      chain: { description: 'internal', required: false, default: 'false' }
-  schedule:
-    - cron: '0 */12 * * *'          # twice a day, gapless 12 h coverage
+on: workflow_dispatch
 
 jobs:
-  kali-desktop:
+  kali-rdp:
     runs-on: ubuntu-latest
-    timeout-minutes: 360            # 6 h hard cap
-
+    timeout-minutes: 120
+    
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install tools + xfce + xrdp + playit
+      - name: Start Kali Linux with RDP
         run: |
-          set -e                          # fail-fast
-          # 1.  Ubuntu native tools
-          sudo add-apt-repository -y universe restricted
-          sudo apt-get update
-          sudo apt-get install -y \
-            nmap john hashcat sqlmap gobuster dirb ffuf \
-            xfce4 xfce4-goodies xrdp
-
-          # 2.  missing tools → Snap (separate calls)
-          sudo snap install feroxbuster --classic
-          sudo snap install metasploit-framework --classic
-
-          # 3.  user
-          sudo useradd -m -s /bin/bash kali 2>/dev/null || true
-          echo "kali:${{ secrets.KL_PASS }}" | sudo chpasswd
-          sudo usermod -aG sudo kali
-
-          # 4.  xrdp tweaks
-          echo "startxfce4" | sudo tee -a /etc/xrdp/startwm.sh
-          sudo systemctl enable xrdp
-          sudo systemctl start xrdp
-
-          # 5.  play-it static binary (pinned, verified)
-          PLAYIT_URL="https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-x86_64-v0.15.26.tar.gz"
-          curl -fL -H "Accept: application/octet-stream" "$PLAYIT_URL" -o /tmp/playit.tar.gz
-          # verify it’s actually gzip
-          file /tmp/playit.tar.gz | grep -q "gzip compressed" || {
-            echo "Download corrupted or not gzip"; exit 1; }
-          tar -xzf /tmp/playit.tar.gz -C /tmp
-          sudo mv /tmp/playit /usr/local/bin/
-          sudo chmod +x /usr/local/bin/playit
+          echo "🚀 Starting Kali Linux in Docker..."
+          docker run -d --name kali-rdp -p 3389:3389 kalilinux/kali-rolling
+          echo "✅ Kali container started!"
           
-      - name: Launch playit tunnel
-        env:
-          PLAYIT_AUTH_KEY: ${{ secrets.PL }}
+      - name: Keep Alive
         run: |
-          /usr/bin/playit --secret "$PLAYIT_AUTH_KEY" 2>&1 | tee playit.log &
-          for i in {1..60}; do
-            addr=$(grep -oP 'https://\K[\w\-\.]+\.ply\.gg:\d+' playit.log | head -n1)
-            [[ -n "$addr" ]] && echo ">>> RDP ADDRESS: $addr <<<" && exit 0
-            sleep 1
-          done
-          echo "tunnel not found" && exit 1
-
-      - name: Queue follow-up job (only once)
-        if: github.event.inputs.chain != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run '${{ github.workflow }}' -f chain=true
-
-      - name: Keep runner alive
-        run: sleep 21600          # 6 h
+          echo "⏰ RDP will be available for 2 hours"
+          sleep 7200
