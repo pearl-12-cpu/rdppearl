@@ -1,5 +1,4 @@
-
-name: APT-RDP
+name: TOOLBOXLAP
 
 on:
   workflow_dispatch:
@@ -39,43 +38,52 @@ jobs:
     - name: Install Essential Tools
       shell: pwsh
       run: |
-        # Install 7-Zip (silent install)
+        # Install 7-Zip
         Write-Host "Installing 7-Zip..."
-        Invoke-WebRequest -Uri "https://www.7-zip.org/a/7z2408-x64.msi" -OutFile "$env:TEMP\7z-installer.msi"
-        Start-Process "msiexec" -ArgumentList "/i", "$env:TEMP\7z-installer.msi", "/quiet", "/norestart" -Wait
-    
-        # Install VLC (using portable version instead)
+        Invoke-WebRequest -Uri "https://www.7-zip.org/a/7z2408-x64.msi" -OutFile "$env:TEMP\7z.msi"
+        Start-Process "msiexec" -ArgumentList "/i", "$env:TEMP\7z.msi", "/quiet", "/norestart" -Wait
+        
+        # Install VLC Portable
         Write-Host "Installing VLC Portable..."
-        Invoke-WebRequest -Uri "https://download.videolan.org/pub/vlc/3.0.21/win64/vlc-3.0.21-win64.zip" -OutFile "$env:TEMP\vlc-portable.zip"
-        Expand-Archive -Path "$env:TEMP\vlc-portable.zip" -DestinationPath "C:\Program Files\VLC\" -Force
-    
-        # Install Opera Browser (using proper silent args)
+        Invoke-WebRequest -Uri "https://download.videolan.org/pub/vlc/3.0.21/win64/vlc-3.0.21-win64.7z" -OutFile "$env:TEMP\vlc.7z"
+        & "C:\Program Files\7-Zip\7z.exe" x "$env:TEMP\vlc.7z" -o"C:\Program Files\VLC" -y -bso0
+        
+        # Install Opera Browser (using direct download link)
         Write-Host "Installing Opera..."
-        Invoke-WebRequest -Uri "https://get.opera.com/pub/opera/desktop/110.0.5131.0/win/Opera_110.0.5131.0_Setup_x64.exe" -OutFile "$env:TEMP\opera-installer.exe"
-        Start-Process "$env:TEMP\opera-installer.exe" -ArgumentList "/silent", "/launchbrowser=0", "/install" -Wait -NoNewWindow
-    
-        # Install Lossless Cut (portable version)
+        Invoke-WebRequest -Uri "https://download1.operacdn.com/pub/opera/desktop/110.0.5131.0/win/Opera_110.0.5131.0_Setup_x64.exe" -OutFile "$env:TEMP\opera.exe"
+        Start-Process "$env:TEMP\opera.exe" -ArgumentList "/silent", "/launchbrowser=0", "/install" -Wait
+        
+        # Install Lossless Cut
         Write-Host "Installing Lossless Cut..."
         Invoke-WebRequest -Uri "https://github.com/mifi/lossless-cut/releases/latest/download/LosslessCut.exe" -OutFile "C:\Windows\System32\LosslessCut.exe"
-    
+        
         Write-Host "All tools installed successfully!"
 
     - name: Install Media Tools (yt-dlp + ffmpeg)
       shell: pwsh
       run: |
-        # Install yt-dlp to System32
+        # Install yt-dlp
+        Write-Host "Installing yt-dlp..."
         Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "C:\Windows\System32\yt-dlp.exe"
         
-        # Install ffmpeg to System32
+        # Install ffmpeg
+        Write-Host "Installing ffmpeg..."
         $fftmp = "$env:TEMP\ff"; mkdir $fftmp -Force >$null;
-        Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full.7z" -OutFile "$fftmp\ff.7z";
-        & "C:\Program Files\7-Zip\7z.exe" x "$fftmp\ff.7z" -o"$fftmp" -y;
-        Copy-Item "$fftmp\ffmpeg-*\bin\*.exe" "C:\Windows\System32\";
+        Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile "$fftmp\ffmpeg.zip";
+        Expand-Archive -Path "$fftmp\ffmpeg.zip" -DestinationPath "$fftmp" -Force;
+        Get-ChildItem "$fftmp\ffmpeg-*\bin\*.exe" | Copy-Item -Destination "C:\Windows\System32\" -Force;
         
-        # Add desktop shortcuts for easy access
+        # Create desktop shortcuts
+        Write-Host "Creating desktop shortcuts..."
         $WshShell = New-Object -comObject WScript.Shell
         $Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\Lossless Cut.lnk")
         $Shortcut.TargetPath = "C:\Windows\System32\LosslessCut.exe"
+        $Shortcut.WorkingDirectory = "C:\Windows\System32"
+        $Shortcut.Save()
+        
+        $Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\VLC Player.lnk")
+        $Shortcut.TargetPath = "C:\Program Files\VLC\vlc.exe"
+        $Shortcut.WorkingDirectory = "C:\Program Files\VLC"
         $Shortcut.Save()
         
         $Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\Opera Browser.lnk")
@@ -85,15 +93,28 @@ jobs:
     - name: Create Download Script
       shell: pwsh
       run: |
-        # Create a convenient download script on desktop
-        $downloadScript = @"
+        # Create download script on desktop
+        $downloadScript = @'
         @echo off
         chcp 65001 >nul
-        echo Starting download with 8 threads...
-        yt-dlp -N 8 -o "%USERPROFILE%\Downloads\%(title)s-%(height)sp.%(ext)s" "%1"
+        echo ===============================
+        echo    YouTube Download Script
+        echo ===============================
+        echo.
+        if "%1"=="" (
+        set /p "url=Enter YouTube URL: "
+        ) else (
+        set "url=%1"
+        )
+        echo Downloading: %url%
+        yt-dlp -N 8 -o "%USERPROFILE%\Downloads\%(title)s-%(height)sp.%(ext)s" "%url%"
+        if %errorlevel% equ 0 (
+        echo Download completed successfully!
+        ) else (
+        echo Download failed with error code %errorlevel%
+        )
         pause
-        "@
-        
+        '@
         $downloadScript | Out-File -FilePath "$env:USERPROFILE\Desktop\Download.bat" -Encoding ASCII
 
     - name: Show tunnel address
@@ -101,11 +122,11 @@ jobs:
       env:
         PLAYIT_AUTH_KEY: ${{ secrets.PL }}
       run: |
-        # 1.  start playit in foreground – secret quoted *inside* the arg list
+        # Start playit in foreground
         $arg = '--secret', $env:PLAYIT_AUTH_KEY
         & "$env:USERPROFILE\playit.exe" $arg 2>&1 | Tee-Object -Variable out
 
-        # 2.  pick the first “https://*.ply.gg:nnnn” line
+        # Find the tunnel URL
         $m = $out | Select-String -Pattern 'https://([\w\-\.]+\.ply\.gg:\d+)' | Select-Object -First 1
         if ($m) {
             $addr = $m.Matches.Groups[1].Value
@@ -122,7 +143,6 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        # push the same workflow with chain=true so the next job won't loop forever
         gh workflow run '${{ github.workflow }}' -f chain=true
 
     # ---------- keep alive ----------
