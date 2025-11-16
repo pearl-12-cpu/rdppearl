@@ -1,3 +1,4 @@
+
 name: TOOLBOXLAP
 
 on:
@@ -80,12 +81,12 @@ jobs:
       run: |
         # Create a convenient download script on desktop
         $downloadScript = @"
-@echo off
-chcp 65001 >nul
-echo Starting download with 8 threads...
-yt-dlp -N 8 -o "%USERPROFILE%\Downloads\%(title)s-%(height)sp.%(ext)s" "%1"
-pause
-"@
+        @echo off
+        chcp 65001 >nul
+        echo Starting download with 8 threads...
+        yt-dlp -N 8 -o "%USERPROFILE%\Downloads\%(title)s-%(height)sp.%(ext)s" "%1"
+        pause
+        "@
         
         $downloadScript | Out-File -FilePath "$env:USERPROFILE\Desktop\Download.bat" -Encoding ASCII
 
