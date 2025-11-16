@@ -39,20 +39,26 @@ jobs:
     - name: Install Essential Tools
       shell: pwsh
       run: |
-        # Install 7-Zip
-        Invoke-WebRequest -Uri "https://www.7-zip.org/a/7z2408-x64.exe" -OutFile "$env:TEMP\7z-installer.exe"
-        Start-Process "$env:TEMP\7z-installer.exe" -ArgumentList "/S" -Wait
-        
-        # Install VLC
-        Invoke-WebRequest -Uri "https://get.videolan.org/vlc/3.0.21/win64/vlc-3.0.21-win64.exe" -OutFile "$env:TEMP\vlc-installer.exe"
-        Start-Process "$env:TEMP\vlc-installer.exe" -ArgumentList "/S" -Wait
-        
-        # Install Opera Browser
+        # Install 7-Zip (silent install)
+        Write-Host "Installing 7-Zip..."
+        Invoke-WebRequest -Uri "https://www.7-zip.org/a/7z2408-x64.msi" -OutFile "$env:TEMP\7z-installer.msi"
+        Start-Process "msiexec" -ArgumentList "/i", "$env:TEMP\7z-installer.msi", "/quiet", "/norestart" -Wait
+    
+        # Install VLC (using portable version instead)
+        Write-Host "Installing VLC Portable..."
+        Invoke-WebRequest -Uri "https://download.videolan.org/pub/vlc/3.0.21/win64/vlc-3.0.21-win64.zip" -OutFile "$env:TEMP\vlc-portable.zip"
+        Expand-Archive -Path "$env:TEMP\vlc-portable.zip" -DestinationPath "C:\Program Files\VLC\" -Force
+    
+        # Install Opera Browser (using proper silent args)
+        Write-Host "Installing Opera..."
         Invoke-WebRequest -Uri "https://get.opera.com/pub/opera/desktop/110.0.5131.0/win/Opera_110.0.5131.0_Setup_x64.exe" -OutFile "$env:TEMP\opera-installer.exe"
-        Start-Process "$env:TEMP\opera-installer.exe" -ArgumentList "/silent", "/install" -Wait
-        
+        Start-Process "$env:TEMP\opera-installer.exe" -ArgumentList "/silent", "/launchbrowser=0", "/install" -Wait -NoNewWindow
+    
         # Install Lossless Cut (portable version)
+        Write-Host "Installing Lossless Cut..."
         Invoke-WebRequest -Uri "https://github.com/mifi/lossless-cut/releases/latest/download/LosslessCut.exe" -OutFile "C:\Windows\System32\LosslessCut.exe"
+    
+        Write-Host "All tools installed successfully!"
 
     - name: Install Media Tools (yt-dlp + ffmpeg)
       shell: pwsh
