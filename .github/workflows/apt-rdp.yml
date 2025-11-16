@@ -1,0 +1,124 @@
+name: TOOLBOXLAP
+
+on:
+  workflow_dispatch:
+    inputs:
+      chain:
+        description: 'internal flag, leave empty'
+        required: false
+        default: 'false'
+
+  schedule:
+    - cron: '0 */12 * * *'   # 00:00 and 12:00 UTC every day
+
+jobs:
+  setup-rdp-tunnel:
+    runs-on: windows-latest
+    timeout-minutes: 360          # 6 h hard cap
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Playit
+      shell: pwsh
+      run: |
+        Invoke-WebRequest -Uri "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-windows-x86_64-signed.exe" -OutFile "$env:USERPROFILE\playit.exe"
+
+    - name: Configure RDP
+      shell: pwsh
+      env:
+        PASS: ${{ secrets.RDP_PASS }}
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+        Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText $env:PASS -Force)
+
+    - name: Install Essential Tools
+      shell: pwsh
+      run: |
+        # Install 7-Zip
+        Invoke-WebRequest -Uri "https://www.7-zip.org/a/7z2408-x64.exe" -OutFile "$env:TEMP\7z-installer.exe"
+        Start-Process "$env:TEMP\7z-installer.exe" -ArgumentList "/S" -Wait
+        
+        # Install VLC
+        Invoke-WebRequest -Uri "https://get.videolan.org/vlc/3.0.21/win64/vlc-3.0.21-win64.exe" -OutFile "$env:TEMP\vlc-installer.exe"
+        Start-Process "$env:TEMP\vlc-installer.exe" -ArgumentList "/S" -Wait
+        
+        # Install Opera Browser
+        Invoke-WebRequest -Uri "https://get.opera.com/pub/opera/desktop/110.0.5131.0/win/Opera_110.0.5131.0_Setup_x64.exe" -OutFile "$env:TEMP\opera-installer.exe"
+        Start-Process "$env:TEMP\opera-installer.exe" -ArgumentList "/silent", "/install" -Wait
+        
+        # Install Lossless Cut (portable version)
+        Invoke-WebRequest -Uri "https://github.com/mifi/lossless-cut/releases/latest/download/LosslessCut.exe" -OutFile "C:\Windows\System32\LosslessCut.exe"
+
+    - name: Install Media Tools (yt-dlp + ffmpeg)
+      shell: pwsh
+      run: |
+        # Install yt-dlp to System32
+        Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "C:\Windows\System32\yt-dlp.exe"
+        
+        # Install ffmpeg to System32
+        $fftmp = "$env:TEMP\ff"; mkdir $fftmp -Force >$null;
+        Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full.7z" -OutFile "$fftmp\ff.7z";
+        & "C:\Program Files\7-Zip\7z.exe" x "$fftmp\ff.7z" -o"$fftmp" -y;
+        Copy-Item "$fftmp\ffmpeg-*\bin\*.exe" "C:\Windows\System32\";
+        
+        # Add desktop shortcuts for easy access
+        $WshShell = New-Object -comObject WScript.Shell
+        $Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\Lossless Cut.lnk")
+        $Shortcut.TargetPath = "C:\Windows\System32\LosslessCut.exe"
+        $Shortcut.Save()
+        
+        $Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\Opera Browser.lnk")
+        $Shortcut.TargetPath = "C:\Program Files\Opera\launcher.exe"
+        $Shortcut.Save()
+
+    - name: Create Download Script
+      shell: pwsh
+      run: |
+        # Create a convenient download script on desktop
+        $downloadScript = @"
+@echo off
+chcp 65001 >nul
+echo Starting download with 8 threads...
+yt-dlp -N 8 -o "%USERPROFILE%\Downloads\%(title)s-%(height)sp.%(ext)s" "%1"
+pause
+"@
+        
+        $downloadScript | Out-File -FilePath "$env:USERPROFILE\Desktop\Download.bat" -Encoding ASCII
+
+    - name: Show tunnel address
+      shell: pwsh
+      env:
+        PLAYIT_AUTH_KEY: ${{ secrets.PL }}
+      run: |
+        # 1.  start playit in foreground – secret quoted *inside* the arg list
+        $arg = '--secret', $env:PLAYIT_AUTH_KEY
+        & "$env:USERPROFILE\playit.exe" $arg 2>&1 | Tee-Object -Variable out
+
+        # 2.  pick the first “https://*.ply.gg:nnnn” line
+        $m = $out | Select-String -Pattern 'https://([\w\-\.]+\.ply\.gg:\d+)' | Select-Object -First 1
+        if ($m) {
+            $addr = $m.Matches.Groups[1].Value
+            Write-Host "`n>>> RDP ADDRESS: $addr <<<`n"
+        } else {
+            Write-Host "no tunnel URL found"
+            exit 1
+        }
+
+    # ---------- chaining logic ----------
+    - name: Queue follow-up job (only once)
+      if: github.event.inputs.chain != 'true'
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # push the same workflow with chain=true so the next job won't loop forever
+        gh workflow run '${{ github.workflow }}' -f chain=true
+
+    # ---------- keep alive ----------
+    - name: Keep runner alive
+      shell: pwsh
+      run: Start-Sleep 21600        # 6 h
