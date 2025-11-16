@@ -1,4 +1,4 @@
-name: TOOLBOXLAP
+name: APT-RDP
 
 on:
   workflow_dispatch:
