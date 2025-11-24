@@ -1,4 +1,5 @@
-name: APT-RDP
+
+name: APTRDP
 
 on:
   workflow_dispatch:
@@ -48,10 +49,10 @@ jobs:
         Invoke-WebRequest -Uri "https://download.videolan.org/pub/vlc/3.0.21/win64/vlc-3.0.21-win64.7z" -OutFile "$env:TEMP\vlc.7z"
         & "C:\Program Files\7-Zip\7z.exe" x "$env:TEMP\vlc.7z" -o"C:\Program Files\VLC" -y -bso0
         
-        # Install Opera Browser (using direct download link)
-        Write-Host "Installing Opera..."
-        Invoke-WebRequest -Uri "https://download1.operacdn.com/pub/opera/desktop/110.0.5131.0/win/Opera_110.0.5131.0_Setup_x64.exe" -OutFile "$env:TEMP\opera.exe"
-        Start-Process "$env:TEMP\opera.exe" -ArgumentList "/silent", "/launchbrowser=0", "/install" -Wait
+        # Install Firefox instead of Opera (more reliable)
+        Write-Host "Installing Firefox..."
+        Invoke-WebRequest -Uri "https://download.mozilla.org/?product=firefox-latest&os=win64&lang=en-US" -OutFile "$env:TEMP\firefox.exe"
+        Start-Process "$env:TEMP\firefox.exe" -ArgumentList "/S" -Wait
         
         # Install Lossless Cut
         Write-Host "Installing Lossless Cut..."
@@ -66,16 +67,16 @@ jobs:
         Write-Host "Installing yt-dlp..."
         Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "C:\Windows\System32\yt-dlp.exe"
         
-        # Install ffmpeg
+        # Install ffmpeg (simplified method)
         Write-Host "Installing ffmpeg..."
-        $fftmp = "$env:TEMP\ff"; mkdir $fftmp -Force >$null;
-        Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile "$fftmp\ffmpeg.zip";
-        Expand-Archive -Path "$fftmp\ffmpeg.zip" -DestinationPath "$fftmp" -Force;
-        Get-ChildItem "$fftmp\ffmpeg-*\bin\*.exe" | Copy-Item -Destination "C:\Windows\System32\" -Force;
+        Invoke-WebRequest -Uri "https://github.com/GyanD/codexffmpeg/releases/download/2024-08-25-git-4a1c3215bc/ffmpeg-2024-08-25-git-4a1c3215bc-full_build.zip" -OutFile "$env:TEMP\ffmpeg.zip"
+        Expand-Archive -Path "$env:TEMP\ffmpeg.zip" -DestinationPath "$env:TEMP\ffmpeg" -Force
+        Copy-Item "$env:TEMP\ffmpeg\ffmpeg-*\bin\*.exe" "C:\Windows\System32\" -Force
         
         # Create desktop shortcuts
         Write-Host "Creating desktop shortcuts..."
         $WshShell = New-Object -comObject WScript.Shell
+        
         $Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\Lossless Cut.lnk")
         $Shortcut.TargetPath = "C:\Windows\System32\LosslessCut.exe"
         $Shortcut.WorkingDirectory = "C:\Windows\System32"
@@ -86,8 +87,8 @@ jobs:
         $Shortcut.WorkingDirectory = "C:\Program Files\VLC"
         $Shortcut.Save()
         
-        $Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\Opera Browser.lnk")
-        $Shortcut.TargetPath = "C:\Program Files\Opera\launcher.exe"
+        $Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\Firefox.lnk")
+        $Shortcut.TargetPath = "C:\Program Files\Mozilla Firefox\firefox.exe"
         $Shortcut.Save()
 
     - name: Create Download Script
@@ -101,21 +102,37 @@ jobs:
         echo    YouTube Download Script
         echo ===============================
         echo.
-        if "%1"=="" (
-        set /p "url=Enter YouTube URL: "
+        if "%~1"=="" (
+            set /p "url=Enter YouTube URL: "
         ) else (
-        set "url=%1"
+            set "url=%~1"
         )
         echo Downloading: %url%
         yt-dlp -N 8 -o "%USERPROFILE%\Downloads\%(title)s-%(height)sp.%(ext)s" "%url%"
         if %errorlevel% equ 0 (
-        echo Download completed successfully!
+            echo Download completed successfully!
         ) else (
-        echo Download failed with error code %errorlevel%
+            echo Download failed with error code %errorlevel%
         )
         pause
         '@
         $downloadScript | Out-File -FilePath "$env:USERPROFILE\Desktop\Download.bat" -Encoding ASCII
+
+        # Also create a PowerShell version
+        $psScript = @'
+        # PowerShell Download Script
+        Write-Host "YouTube Download Script" -ForegroundColor Green
+        $url = Read-Host "Enter YouTube URL"
+        Write-Host "Downloading: $url" -ForegroundColor Yellow
+        & yt-dlp -N 8 -o "$env:USERPROFILE\Downloads\%(title)s-%(height)sp.%(ext)s" "$url"
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "Download completed successfully!" -ForegroundColor Green
+        } else {
+            Write-Host "Download failed with error code $LASTEXITCODE" -ForegroundColor Red
+        }
+        Read-Host "Press Enter to continue"
+        '@
+        $psScript | Out-File -FilePath "$env:USERPROFILE\Desktop\Download.ps1" -Encoding ASCII
 
     - name: Show tunnel address
       shell: pwsh
