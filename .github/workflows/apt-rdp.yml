@@ -46,10 +46,10 @@ jobs:
         Invoke-WebRequest -Uri "https://download.mozilla.org/?product=firefox-latest&os=win64&lang=en-US" -OutFile "$env:TEMP\firefox.exe"
         Start-Process "$env:TEMP\firefox.exe" -ArgumentList "/S" -Wait
         
-        # Install Lossless Cut - FIXED VERSION
+          # Install Lossless Cut - FIXED: Using the correct 7z portable version
         Write-Host "Installing Lossless Cut..."
-        curl.exe -L "https://github.com/mifi/lossless-cut/releases/download/v3.67.1/LosslessCut-win.exe" -o "$env:TEMP\LosslessCut-setup.exe"
-        Start-Process "$env:TEMP\LosslessCut-setup.exe" -ArgumentList "/S" -Wait
+        Invoke-WebRequest -Uri "https://github.com/mifi/lossless-cut/releases/download/v3.67.1/LosslessCut-win-x64.7z" -OutFile "$env:TEMP\LosslessCut.7z"
+        & "C:\Program Files\7-Zip\7z.exe" x "$env:TEMP\LosslessCut.7z" -o"C:\Program Files\LosslessCut" -y -bso0
         
         Write-Host "All tools installed successfully!"
 
@@ -69,10 +69,10 @@ jobs:
         # Create desktop shortcuts
         $WshShell = New-Object -comObject WScript.Shell
         
-        # Lossless Cut shortcut - points to installed location
+        # FIXED: Lossless Cut shortcut now points to portable version
         $Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\Lossless Cut.lnk")
-        $Shortcut.TargetPath = "$env:LOCALAPPDATA\Programs\LosslessCut\LosslessCut.exe"
-        $Shortcut.WorkingDirectory = "$env:LOCALAPPDATA\Programs\LosslessCut"
+        $Shortcut.TargetPath = "C:\Program Files\LosslessCut\LosslessCut.exe"
+        $Shortcut.WorkingDirectory = "C:\Program Files\LosslessCut"
         $Shortcut.Save()
         
         $Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\VLC Player.lnk")
