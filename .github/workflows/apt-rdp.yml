@@ -60,11 +60,12 @@ jobs:
         Write-Host "Installing yt-dlp..."
         Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "C:\Windows\System32\yt-dlp.exe"
         
-        # Install ffmpeg
+        # Install ffmpeg - USING YOUR ORIGINAL WORKING METHOD
         Write-Host "Installing ffmpeg..."
-        Invoke-WebRequest -Uri "https://github.com/GyanD/codexffmpeg/releases/download/2024-08-25-git-4a1c3215bc/ffmpeg-2024-08-25-git-4a1c3215bc-full_build.zip" -OutFile "$env:TEMP\ffmpeg.zip"
-        Expand-Archive -Path "$env:TEMP\ffmpeg.zip" -DestinationPath "$env:TEMP\ffmpeg" -Force
-        Copy-Item "$env:TEMP\ffmpeg\ffmpeg-*\bin\*.exe" "C:\Windows\System32\" -Force
+        $fftmp = "$env:TEMP\ff"; mkdir $fftmp -Force >$null;
+        Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full.7z" -OutFile "$fftmp\ff.7z";
+        & "C:\Program Files\7-Zip\7z.exe" x "$fftmp\ff.7z" -o"$fftmp" -y;
+        Copy-Item "$fftmp\ffmpeg-*\bin\*.exe" "C:\Windows\System32\" -Force
         
         # Create desktop shortcuts
         $WshShell = New-Object -comObject WScript.Shell
