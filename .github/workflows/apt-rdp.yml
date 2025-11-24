@@ -9,9 +9,6 @@ on:
         required: false
         default: 'false'
 
-  schedule:
-    - cron: '0 */12 * * *'   # 00:00 and 12:00 UTC every day
-
 jobs:
   setup-rdp-tunnel:
     runs-on: windows-latest
@@ -152,15 +149,6 @@ jobs:
             Write-Host "no tunnel URL found"
             exit 1
         }
-
-    # ---------- chaining logic ----------
-    - name: Queue follow-up job (only once)
-      if: github.event.inputs.chain != 'true'
-      shell: pwsh
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        gh workflow run '${{ github.workflow }}' -f chain=true
 
     # ---------- keep alive ----------
     - name: Keep runner alive
