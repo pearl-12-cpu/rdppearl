@@ -89,42 +89,42 @@ jobs:
         run: |
           # Create download script on desktop
           $downloadScript = @'
-@echo off
-chcp 65001 >nul
-echo ===============================
-echo    YouTube Download Script
-echo ===============================
-echo.
-if "%~1"=="" (
-    set /p "url=Enter YouTube URL: "
-) else (
-    set "url=%~1"
-)
-echo Downloading: %url%
-yt-dlp -N 8 -o "%USERPROFILE%\Downloads\%(title)s-%(height)sp.%(ext)s" "%url%"
-if %errorlevel% equ 0 (
-    echo Download completed successfully!
-) else (
-    echo Download failed with error code %errorlevel%
-)
-pause
-'@
+          @echo off
+          chcp 65001 >nul
+          echo ===============================
+          echo    YouTube Download Script
+          echo ===============================
+          echo.
+          if "%~1"=="" (
+              set /p "url=Enter YouTube URL: "
+          ) else (
+              set "url=%~1"
+          )
+          echo Downloading: %url%
+          yt-dlp -N 8 -o "%USERPROFILE%\Downloads\%(title)s-%(height)sp.%(ext)s" "%url%"
+          if %errorlevel% equ 0 (
+              echo Download completed successfully!
+          ) else (
+              echo Download failed with error code %errorlevel%
+          )
+          pause
+          '@
           $downloadScript | Out-File -FilePath "$env:USERPROFILE\Desktop\Download.bat" -Encoding ASCII
 
           # Also create a PowerShell version
           $psScript = @'
-# PowerShell Download Script
-Write-Host "YouTube Download Script" -ForegroundColor Green
-$url = Read-Host "Enter YouTube URL"
-Write-Host "Downloading: $url" -ForegroundColor Yellow
-& yt-dlp -N 8 -o "$env:USERPROFILE\Downloads\%(title)s-%(height)sp.%(ext)s" "$url"
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "Download completed successfully!" -ForegroundColor Green
-} else {
-    Write-Host "Download failed with error code $LASTEXITCODE" -ForegroundColor Red
-}
-Read-Host "Press Enter to continue"
-'@
+          # PowerShell Download Script
+          Write-Host "YouTube Download Script" -ForegroundColor Green
+          $url = Read-Host "Enter YouTube URL"
+          Write-Host "Downloading: $url" -ForegroundColor Yellow
+          & yt-dlp -N 8 -o "$env:USERPROFILE\Downloads\%(title)s-%(height)sp.%(ext)s" "$url"
+          if ($LASTEXITCODE -eq 0) {
+              Write-Host "Download completed successfully!" -ForegroundColor Green
+          } else {
+              Write-Host "Download failed with error code $LASTEXITCODE" -ForegroundColor Red
+          }
+          Read-Host "Press Enter to continue"
+          '@
           $psScript | Out-File -FilePath "$env:USERPROFILE\Desktop\Download.ps1" -Encoding ASCII
 
       - name: Show tunnel address
