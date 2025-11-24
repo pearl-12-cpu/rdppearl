@@ -48,7 +48,9 @@ jobs:
           
           # Install Lossless Cut - FIXED VERSION
           Write-Host "Installing Lossless Cut..."
-          Invoke-WebRequest -Uri "https://github.com/mifi/lossless-cut/releases/download/v3.67.1/LosslessCut-win.exe" -OutFile "$env:TEMP\LosslessCut-setup.exe"
+          Invoke-WebRequest -Uri "https://github.com/mifi/lossless-cut/releases/download/v3.67.1/LosslessCut-win.exe" `
+          -OutFile "$env:TEMP\LosslessCut-setup.exe" `
+          -Headers @{ "User-Agent" = "Mozilla/5.0" }
           Start-Process "$env:TEMP\LosslessCut-setup.exe" -ArgumentList "/S" -Wait
           
           Write-Host "All tools installed successfully!"
