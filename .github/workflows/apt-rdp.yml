@@ -18,7 +18,7 @@ jobs:
         Get-PSDrive C | Select-Object Used,Free
 
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Install Playit
       shell: pwsh
@@ -55,8 +55,7 @@ jobs:
         & "C:\Program Files\7-Zip\7z.exe" x "$env:TEMP\LosslessCut.7z" -o"C:\Program Files\LosslessCut" -y -bso0
 
         # qBittorrent
-        Invoke-WebRequest -Uri "https://sourceforge.net/projects/qbittorrent/files/latest/download" -OutFile "$env:TEMP\qbittorrent.exe"
-        Start-Process "$env:TEMP\qbittorrent.exe" -ArgumentList "/S" -Wait
+        choco install qbittorrent -y --no-progress
 
         Write-Host "All tools installed successfully!"
 
