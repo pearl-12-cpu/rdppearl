@@ -156,7 +156,7 @@ jobs:
 
     - name: Keep runner alive
       shell: pwsh
-      run: Start-Sleep 21600name: APTRDP
+      run: Start-Sleep 21600
 
 on:
   workflow_dispatch:
