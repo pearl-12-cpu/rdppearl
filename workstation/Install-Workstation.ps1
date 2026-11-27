@@ -28,6 +28,11 @@ $failures = [System.Collections.Generic.List[string]]::new()
 Start-Transcript -Path $log | Out-Null
 try {
     foreach ($id in $packages) {
+        & winget.exe list --id $id --exact --accept-source-agreements --disable-interactivity
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "Already installed: $id"
+            continue
+        }
         Write-Host "Installing $id"
         & winget.exe install --id $id --exact --source winget --accept-source-agreements --accept-package-agreements --disable-interactivity --no-upgrade
         $installCode = $LASTEXITCODE
