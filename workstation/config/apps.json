@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "profiles": {
+    "core": [
+      "7zip.7zip",
+      "Mozilla.Firefox",
+      "VideoLAN.VLC",
+      "Microsoft.Sysinternals.ProcessExplorer"
+    ],
+    "media": [
+      "mifi.losslesscut",
+      "Gyan.FFmpeg",
+      "yt-dlp.yt-dlp",
+      "HandBrake.HandBrake",
+      "Audacity.Audacity",
+      "Nikse.SubtitleEdit"
+    ],
+    "optional": [
+      "qBittorrent.qBittorrent"
+    ]
+  }
+}

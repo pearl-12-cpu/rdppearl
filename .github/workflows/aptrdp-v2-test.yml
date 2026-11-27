@@ -1,0 +1,25 @@
+name: APTRDP v2 checks
+on:
+  push:
+    branches: [aptrdp-v2-workstation]
+    paths:
+      - 'workstation/**'
+      - '.github/workflows/aptrdp-v2-test.yml'
+  pull_request:
+    paths:
+      - 'workstation/**'
+      - '.github/workflows/aptrdp-v2-test.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Validate PowerShell and application manifest
+        shell: pwsh
+        run: ./workstation/tests/Test-Workstation.ps1
