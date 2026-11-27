@@ -1,0 +1,591 @@
+
+name: APTRDP 2.0
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Application installation profile
+        type: choice
+        default: Media
+        options:
+          - Core
+          - Media
+          - Full
+
+      rdp_debug:
+        description: Enable temporary RDP for interactive testing
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aptrdp-v2
+  cancel-in-progress: false
+
+jobs:
+  setup:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    defaults:
+      run:
+        shell: pwsh
+
+    env:
+      WORKSPACE: C:\Users\Public\Documents\APTRDP
+      PLAYIT_VERSION: '0.15.26'
+
+    steps:
+
+      # ==========================================
+      # SYSTEM INFORMATION
+      # ==========================================
+
+      - name: System information
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          Write-Host "========== APTRDP 2.0 =========="
+
+          Get-CimInstance Win32_Processor |
+            Select-Object Name, NumberOfCores,
+              NumberOfLogicalProcessors
+
+          Get-CimInstance Win32_ComputerSystem |
+            Select-Object @{
+              Name='RAM_GB'
+              Expression={
+                [math]::Round($_.TotalPhysicalMemory / 1GB, 2)
+              }
+            }
+
+          Get-PSDrive C |
+            Select-Object Name, Used, Free
+
+      # ==========================================
+      # CREATE WORKSPACE
+      # ==========================================
+
+      - name: Create workspace
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $folders = @(
+            'Downloads',
+            'Videos',
+            'Audio',
+            'Projects',
+            'Exports',
+            'Scripts',
+            'Logs'
+          )
+
+          New-Item -ItemType Directory `
+            -Path $env:WORKSPACE -Force | Out-Null
+
+          foreach ($folder in $folders) {
+            New-Item -ItemType Directory `
+              -Path (Join-Path $env:WORKSPACE $folder) `
+              -Force | Out-Null
+          }
+
+      # ==========================================
+      # INSTALL APPLICATIONS
+      # ==========================================
+
+      - name: Install applications
+        env:
+          INSTALL_PROFILE: ${{ inputs.profile }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+
+          $core = @(
+            '7zip',
+            'firefox',
+            'vlc',
+            'sysinternals'
+          )
+
+          $media = @(
+            'ffmpeg',
+            'yt-dlp',
+            'lossless-cut',
+            'handbrake',
+            'audacity',
+            'subtitleedit'
+          )
+
+          $full = @(
+            'qbittorrent'
+          )
+
+          $packages = @($core)
+
+          if ($env:INSTALL_PROFILE -in @('Media', 'Full')) {
+            $packages += $media
+          }
+
+          if ($env:INSTALL_PROFILE -eq 'Full') {
+            $packages += $full
+          }
+
+          $failed = @()
+          $results = @()
+
+          foreach ($package in $packages) {
+            Write-Host "Checking $package"
+
+            $installed = choco list $package `
+              --exact --limit-output
+
+            $alreadyInstalled = $installed |
+              Where-Object {
+                $_ -match "^$([regex]::Escape($package))\|"
+              }
+
+            if ($alreadyInstalled) {
+              Write-Host "$package already installed"
+            }
+            else {
+              Write-Host "Installing $package"
+
+              choco install $package -y `
+                --no-progress `
+                --execution-timeout=900
+
+              $code = $LASTEXITCODE
+
+              if ($code -notin @(0, 1641, 3010)) {
+                Write-Warning "$package failed: $code"
+                $failed += $package
+                continue
+              }
+            }
+
+            $verified = choco list $package `
+              --exact --limit-output
+
+            if ($verified -match "^$([regex]::Escape($package))\|") {
+              $results += $verified
+              Write-Host "$package verified"
+            }
+            else {
+              $failed += $package
+            }
+          }
+
+          $results | Set-Content `
+            "$env:WORKSPACE\Logs\installed-apps.txt"
+
+          if ($failed.Count -gt 0) {
+            throw "Failed packages: $($failed -join ', ')"
+          }
+
+          Write-Host "Package installation checks passed"
+
+      # ==========================================
+      # REFRESH ENVIRONMENT
+      # ==========================================
+
+      - name: Refresh application paths
+        run: |
+          $machinePath = [Environment]::GetEnvironmentVariable(
+            'Path', 'Machine'
+          )
+
+          $userPath = [Environment]::GetEnvironmentVariable(
+            'Path', 'User'
+          )
+
+          $env:Path = "$machinePath;$userPath;$env:Path"
+
+          "$env:ChocolateyInstall\bin" |
+            Out-File -FilePath $env:GITHUB_PATH `
+              -Encoding utf8 -Append
+
+      # ==========================================
+      # VERIFY MULTIMEDIA TOOLS
+      # ==========================================
+
+      - name: Test FFmpeg and yt-dlp
+        if: inputs.profile != 'Core'
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          ffmpeg -version
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "FFmpeg verification failed"
+          }
+
+          yt-dlp --version
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "yt-dlp verification failed"
+          }
+
+          $testVideo = Join-Path `
+            $env:WORKSPACE 'Videos\test-video.mp4'
+
+          ffmpeg -hide_banner -loglevel error -y `
+            -f lavfi `
+            -i "testsrc2=size=1280x720:rate=30" `
+            -t 3 `
+            -c:v libx264 `
+            -pix_fmt yuv420p `
+            $testVideo
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Video encoding test failed"
+          }
+
+          ffprobe -v error `
+            -show_format `
+            -show_streams `
+            $testVideo
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Video inspection test failed"
+          }
+
+          Write-Host "Media processing tests passed"
+
+      # ==========================================
+      # CREATE MEDIA DOWNLOADER
+      # ==========================================
+
+      - name: Create download utility
+        if: inputs.profile != 'Core'
+        run: |
+          $script = @'
+          $ErrorActionPreference = 'Stop'
+
+          Clear-Host
+
+          Write-Host "=============================="
+          Write-Host "     APTRDP MEDIA DOWNLOADER"
+          Write-Host "=============================="
+
+          $url = Read-Host "Enter media URL"
+
+          $parsed = $null
+
+          if (-not [uri]::TryCreate(
+            $url,
+            [UriKind]::Absolute,
+            [ref]$parsed
+          )) {
+            Write-Host "Invalid URL"
+            Read-Host "Press Enter to close"
+            exit 1
+          }
+
+          if ($parsed.Scheme -notin @('http','https')) {
+            throw "Only HTTP and HTTPS URLs are accepted"
+          }
+
+          $destination = "C:\Users\Public\Documents\APTRDP\Downloads"
+
+          Write-Host "1. Best available video"
+          Write-Host "2. Video up to 1080p"
+          Write-Host "3. Video up to 720p"
+          Write-Host "4. Audio only"
+
+          $choice = Read-Host "Choose an option"
+
+          $options = @(
+            '--no-playlist',
+            '--windows-filenames',
+            '--paths', $destination,
+            '-o', '%(title)s-%(id)s.%(ext)s'
+          )
+
+          switch ($choice) {
+            '1' {
+              $options += @(
+                '-f', 'bv*+ba/b',
+                '--merge-output-format', 'mp4'
+              )
+            }
+            '2' {
+              $options += @(
+                '-f', 'bv*[height<=1080]+ba/b[height<=1080]',
+                '--merge-output-format', 'mp4'
+              )
+            }
+            '3' {
+              $options += @(
+                '-f', 'bv*[height<=720]+ba/b[height<=720]',
+                '--merge-output-format', 'mp4'
+              )
+            }
+            '4' {
+              $options += @(
+                '-x',
+                '--audio-format', 'mp3',
+                '--audio-quality', '0'
+              )
+            }
+            default {
+              throw "Invalid selection"
+            }
+          }
+
+          # Only download media you are authorized to download.
+          & yt-dlp @options -- $parsed.AbsoluteUri
+
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Download successful"
+          }
+          else {
+            Write-Host "Download failed"
+          }
+
+          Read-Host "Press Enter to close"
+          '@
+
+          $script | Set-Content `
+            "$env:WORKSPACE\Scripts\Download-Media.ps1" `
+            -Encoding UTF8
+
+      # ==========================================
+      # DESKTOP SHORTCUTS
+      # ==========================================
+
+      - name: Create desktop shortcuts
+        run: |
+          $desktop = [Environment]::GetFolderPath(
+            'CommonDesktopDirectory'
+          )
+
+          $wsh = New-Object -ComObject WScript.Shell
+
+          function New-Shortcut {
+            param(
+              [string]$Name,
+              [string]$Target,
+              [string]$Arguments = ''
+            )
+
+            $shortcut = $wsh.CreateShortcut(
+              (Join-Path $desktop "$Name.lnk")
+            )
+
+            $shortcut.TargetPath = $Target
+            $shortcut.Arguments = $Arguments
+            $shortcut.Save()
+          }
+
+          New-Shortcut `
+            -Name 'APTRDP Workspace' `
+            -Target $env:WORKSPACE
+
+          New-Shortcut `
+            -Name 'APTRDP Downloads' `
+            -Target "$env:WORKSPACE\Downloads"
+
+          New-Shortcut `
+            -Name 'APTRDP Projects' `
+            -Target "$env:WORKSPACE\Projects"
+
+          $downloader = "$env:WORKSPACE\Scripts\Download-Media.ps1"
+
+          if (Test-Path $downloader) {
+            New-Shortcut `
+              -Name 'Media Downloader' `
+              -Target "$PSHOME\pwsh.exe" `
+              -Arguments "-NoProfile -File `"$downloader`""
+          }
+
+          Write-Host "Workspace shortcuts created"
+
+      # ==========================================
+      # VALIDATE GENERATED POWERSHELL
+      # ==========================================
+
+      - name: Validate scripts
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          Get-ChildItem "$env:WORKSPACE\Scripts" `
+            -Filter '*.ps1' |
+            ForEach-Object {
+              $tokens = $null
+              $errors = $null
+
+              [System.Management.Automation.Language.Parser]::ParseFile(
+                $_.FullName,
+                [ref]$tokens,
+                [ref]$errors
+              ) | Out-Null
+
+              if ($errors.Count -gt 0) {
+                throw "Syntax error in $($_.Name): $errors"
+              }
+
+              Write-Host "$($_.Name) passed validation"
+            }
+
+      # ==========================================
+      # OPTIONAL INTERACTIVE RDP TEST
+      # ==========================================
+
+      - name: Interactive RDP debugging
+        if: inputs.rdp_debug == true
+        timeout-minutes: 20
+
+        env:
+          RDP_PASS: ${{ secrets.RDP_PASS }}
+          PLAYIT_SECRET: ${{ secrets.PL }}
+
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if ([string]::IsNullOrWhiteSpace($env:RDP_PASS)) {
+            throw "RDP_PASS secret is missing"
+          }
+
+          if ($env:RDP_PASS.Length -lt 16) {
+            throw "Use an RDP password of at least 16 characters"
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:PLAYIT_SECRET)) {
+            throw "PL secret is missing"
+          }
+
+          $rdpUser = 'APTRDPTester'
+          $process = $null
+
+          $terminalServer = 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server'
+          $rdpTcp = "$terminalServer\WinStations\RDP-Tcp"
+
+          $playit = Join-Path $env:RUNNER_TEMP 'playit.exe'
+
+          $downloadUrl = "https://github.com/playit-cloud/playit-agent/releases/download/v$env:PLAYIT_VERSION/playit-windows-x86_64-signed.exe"
+
+          Invoke-WebRequest `
+            -Uri $downloadUrl `
+            -OutFile $playit
+
+          $signature = Get-AuthenticodeSignature $playit
+
+          if ($signature.Status -ne 'Valid') {
+            throw "Playit executable signature is not valid"
+          }
+
+          try {
+            $password = ConvertTo-SecureString `
+              $env:RDP_PASS -AsPlainText -Force
+
+            New-LocalUser `
+              -Name $rdpUser `
+              -Password $password `
+              -Description 'Temporary APTRDP test account'
+
+            Add-LocalGroupMember `
+              -Group 'Remote Desktop Users' `
+              -Member $rdpUser
+
+            Set-ItemProperty `
+              -Path $rdpTcp `
+              -Name UserAuthentication `
+              -Value 1
+
+            Set-ItemProperty `
+              -Path $terminalServer `
+              -Name fDenyTSConnections `
+              -Value 0
+
+            # Avoid opening RDP directly to external interfaces.
+            Disable-NetFirewallRule `
+              -DisplayGroup 'Remote Desktop'
+
+            Start-Service TermService
+
+            if (-not (Test-NetConnection `
+              -ComputerName 127.0.0.1 `
+              -Port 3389 `
+              -InformationLevel Quiet)) {
+              throw "Local RDP listener unavailable"
+            }
+
+            $process = Start-Process `
+              -FilePath $playit `
+              -ArgumentList @('--secret', $env:PLAYIT_SECRET) `
+              -PassThru `
+              -RedirectStandardOutput "$env:RUNNER_TEMP\playit-out.log" `
+              -RedirectStandardError "$env:RUNNER_TEMP\playit-error.log"
+
+            Start-Sleep -Seconds 10
+
+            $process.Refresh()
+
+            if ($process.HasExited) {
+              throw "Playit failed to initialize"
+            }
+
+            Write-Host "Interactive debugging initialized"
+            Write-Host "Username: APTRDPTester"
+            Write-Host "Password: configured RDP_PASS secret"
+            Write-Host "Check your Playit dashboard for the tunnel endpoint"
+
+            $deadline = (Get-Date).AddMinutes(15)
+
+            while ((Get-Date) -lt $deadline) {
+              $process.Refresh()
+
+              if ($process.HasExited) {
+                throw "Playit terminated unexpectedly"
+              }
+
+              Start-Sleep -Seconds 10
+            }
+          }
+          finally {
+            if ($null -ne $process) {
+              Stop-Process -Id $process.Id `
+                -Force -ErrorAction SilentlyContinue
+            }
+
+            Set-ItemProperty `
+              -Path $terminalServer `
+              -Name fDenyTSConnections `
+              -Value 1
+
+            Remove-LocalUser `
+              -Name $rdpUser `
+              -ErrorAction SilentlyContinue
+
+            Write-Host "Temporary debugging session closed"
+          }
+
+      # ==========================================
+      # FINAL REPORT
+      # ==========================================
+
+      - name: System report
+        if: always()
+        run: |
+          Write-Host "========== SYSTEM REPORT =========="
+
+          Get-PSDrive C |
+            Select-Object Name, Used, Free
+
+          if (Test-Path "$env:WORKSPACE\Logs\installed-apps.txt") {
+            Get-Content "$env:WORKSPACE\Logs\installed-apps.txt"
+          }
+
+      - name: Upload installation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: APTRDP-v2-test-report
+          path: |
+            C:\Users\Public\Documents\APTRDP\Logs
+            C:\Users\Public\Documents\APTRDP\Videos\test-video.mp4
+          retention-days: 3
+          if-no-files-found: warn
